@@ -1,0 +1,9 @@
+# sonic-dbus-bridge meson options
+
+option(
+    'root_user_mgmt',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Include root user in user management'
+)
+

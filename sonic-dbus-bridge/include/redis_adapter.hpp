@@ -1,0 +1,125 @@
+#pragma once
+
+#include "types.hpp"
+#include <hiredis/hiredis.h>
+#include <memory>
+#include <string>
+#include <map>
+#include <optional>
+
+namespace sonic::dbus_bridge
+{
+
+/**
+ * @brief Redis client adapter for SONiC databases
+ * 
+ * Connects to CONFIG_DB (DB 4) and STATE_DB (DB 6) and provides
+ * methods to read device metadata and chassis state.
+ */
+class RedisAdapter
+{
+  public:
+    /**
+     * @brief Construct a new Redis Adapter
+     * 
+     * @param configDbHost CONFIG_DB host (default: localhost)
+     * @param configDbPort CONFIG_DB port (default: 6379)
+     * @param stateDbHost STATE_DB host (default: localhost)
+     * @param stateDbPort STATE_DB port (default: 6379)
+     */
+    RedisAdapter(const std::string& configDbHost = "localhost",
+                 int configDbPort = 6379,
+                 const std::string& stateDbHost = "localhost",
+                 int stateDbPort = 6379);
+
+    ~RedisAdapter();
+
+    // Disable copy
+    RedisAdapter(const RedisAdapter&) = delete;
+    RedisAdapter& operator=(const RedisAdapter&) = delete;
+
+    /**
+     * @brief Connect to Redis databases
+     * 
+     * @return true if at least one database connected successfully
+     * @return false if all connections failed
+     */
+    bool connect();
+
+    /**
+     * @brief Check if CONFIG_DB is connected
+     */
+    bool isConfigDbConnected() const { return configDbContext_ != nullptr; }
+
+    /**
+     * @brief Check if STATE_DB is connected
+     */
+    bool isStateDbConnected() const { return stateDbContext_ != nullptr; }
+
+    /**
+     * @brief Get device metadata from CONFIG_DB
+     * 
+     * Reads DEVICE_METADATA|localhost hash
+     * 
+     * @return DeviceMetadata structure (fields may be empty if unavailable)
+     */
+    DeviceMetadata getDeviceMetadata();
+
+    /**
+     * @brief Get chassis state from STATE_DB
+     * 
+     * Reads CHASSIS_STATE_TABLE|chassis0 hash
+     * 
+     * @return ChassisState structure (defaults to "on" if unavailable)
+     */
+    ChassisState getChassisState();
+
+  private:
+    std::string configDbHost_;
+    int configDbPort_;
+    std::string stateDbHost_;
+    int stateDbPort_;
+
+    redisContext* configDbContext_{nullptr};
+    redisContext* stateDbContext_{nullptr};
+
+    /**
+     * @brief Connect to a specific Redis database
+     * 
+     * @param host Redis host
+     * @param port Redis port
+     * @param dbIndex Database index (4 for CONFIG_DB, 6 for STATE_DB)
+     * @return redisContext* on success, nullptr on failure
+     */
+    redisContext* connectToDb(const std::string& host, int port, int dbIndex);
+
+    /**
+     * @brief Get all fields from a Redis hash
+     * 
+     * @param ctx Redis context
+     * @param key Hash key
+     * @return Map of field->value, empty if key doesn't exist
+     */
+    std::map<std::string, std::string> hgetall(redisContext* ctx,
+                                                const std::string& key);
+
+    /**
+     * @brief Get a single field from a Redis hash
+     * 
+     * @param ctx Redis context
+     * @param key Hash key
+     * @param field Field name
+     * @return Field value if exists, nullopt otherwise
+     */
+    std::optional<std::string> hget(redisContext* ctx,
+                                    const std::string& key,
+                                    const std::string& field);
+
+    /**
+     * @brief Free Redis reply
+     */
+    void freeReply(void* reply);
+};
+
+} // namespace sonic::dbus_bridge
+

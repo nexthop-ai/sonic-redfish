@@ -1,0 +1,31 @@
+Source: sonic-dbus-bridge
+Section: net
+Priority: optional
+Maintainer: SONiC Team <sonic-dev@lists.sonic-net.org>
+Build-Depends: debhelper-compat (= 13),
+               meson (>= 0.57.0),
+               pkg-config,
+               libsystemd-dev,
+               libhiredis-dev,
+               libjsoncpp-dev,
+               libboost-dev,
+               libboost-system-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/sonic-net/sonic-buildimage
+
+Package: sonic-dbus-bridge
+Architecture: any
+Depends: ${misc:Depends},
+         libsystemd0,
+         libhiredis1.1.0,
+         libjsoncpp26,
+         libboost-system1.83.0 | libboost-system1.88.0,
+         dbus
+Description: SONiC to D-Bus inventory bridge for ASPEED BMC
+ Bridges SONiC data sources (Redis, platform.json, FRU EEPROMs)
+ to OpenBMC-compatible D-Bus interfaces, enabling bmcweb to
+ serve Redfish endpoints without modification.
+ .
+ This daemon is specifically designed for ASPEED ARM64 BMC
+ platforms running SONiC with limited database/service availability.
+

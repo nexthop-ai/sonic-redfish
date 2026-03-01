@@ -1,0 +1,13 @@
+# Patch series for bmcweb SONiC integration
+# This series applies on bmcweb commit 6926d430
+#
+# Format: one patch filename per line
+# Lines starting with # are comments
+# Patches are applied in order from top to bottom
+
+0001-Integrating-bmcweb-with-SONiC-s-build-system.patch
+0002-Skip-Authorization-when-calling-D-Bus-service-APIs-2.patch
+0003-Undo-Authorization-code-and-change-pamUpdatePassword.patch
+0004-Updated-pamUpdatePassword-code.patch
+0005-NOS-4177-Added-Github-Workflows-4.patch
+
