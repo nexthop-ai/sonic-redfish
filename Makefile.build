@@ -160,16 +160,76 @@ apply-patches: copy-patches
 		echo "  Patches already applied (bmcweb has local changes)"; \
 	fi
 
-# Build bmcweb
-build-bmcweb: $(BMCWEB_BINARY)
+# Build bmcweb Debian package
+build-bmcweb:
+	@echo "========================================="
+	@echo "Building bmcweb Debian package"
+	@echo "========================================="
+	@echo ""
 
-$(BMCWEB_BINARY):
-	@echo "Building bmcweb..."
+	# Build Docker image if needed
+	@echo "Ensuring Docker build environment..."
+	@docker build -t $(DOCKER_BUILDER_IMAGE) -f $(DOCKERFILE_BUILD) $(BUILD_DIR) 2>/dev/null || true
+	@echo ""
+
+	# Ensure bmcweb source exists
+	@if [ ! -d "$(BMCWEB_DIR)" ]; then \
+		echo "Error: bmcweb directory not found at $(BMCWEB_DIR)"; \
+		echo "Please clone bmcweb source:"; \
+		echo "  git clone https://github.com/openbmc/bmcweb.git"; \
+		echo "  cd bmcweb && git checkout 6926d430"; \
+		exit 1; \
+	fi
+
+	# Copy patches to bmcweb/debian if not already there
+	@echo "Preparing bmcweb source..."
+	@if [ ! -d "$(BMCWEB_DIR)/debian" ]; then \
+		echo "  Copying patches to bmcweb/debian..."; \
+		mkdir -p $(BMCWEB_DIR)/debian; \
+		cp -r $(PATCHES_DIR)/* $(BMCWEB_DIR)/debian/; \
+	fi
+
+	# Apply patches if not already applied
 	@cd $(BMCWEB_DIR) && \
-	rm -rf build && \
-	meson setup build -Dtests=disabled && \
-	meson compile -C build -j $(SONIC_CONFIG_MAKE_JOBS)
-	@echo "  bmcweb built: $(BMCWEB_BINARY)"
+	if [ -d ".git" ] && git diff --quiet 2>/dev/null; then \
+		echo "  Applying patches from debian/series..."; \
+		while IFS= read -r patch || [ -n "$$patch" ]; do \
+			patch=$$(echo "$$patch" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$$//'); \
+			[ -z "$$patch" ] && continue; \
+			echo "    Applying: $$patch"; \
+			if [ -f "debian/$$patch" ]; then \
+				git apply "debian/$$patch" || { echo "Error applying $$patch"; exit 1; }; \
+			else \
+				echo "Error: Patch file not found in debian/: $$patch"; \
+				exit 1; \
+			fi; \
+		done < debian/series; \
+		echo "  All patches applied successfully"; \
+	else \
+		echo "  Patches already applied (bmcweb has local changes)"; \
+	fi
+	@echo ""
+
+	# Run dpkg-buildpackage inside Docker
+	@echo "Building bmcweb Debian package inside Docker..."
+	@mkdir -p $(REPO_ROOT)/target/debs/trixie
+	@docker run --rm \
+		-v "$(REPO_ROOT):/workspace" \
+		-w /workspace/bmcweb \
+		$(DOCKER_BUILDER_IMAGE) \
+		bash -c "dpkg-buildpackage -us -uc -b -j$(SONIC_CONFIG_MAKE_JOBS)"
+	@echo ""
+
+	# Copy artifacts to target directory
+	@echo "Collecting build artifacts..."
+	@cp $(REPO_ROOT)/bmcweb_*.deb $(REPO_ROOT)/target/debs/trixie/ 2>/dev/null || true
+	@cp $(REPO_ROOT)/bmcweb-dbg_*.deb $(REPO_ROOT)/target/debs/trixie/ 2>/dev/null || true
+	@echo ""
+	@echo "========================================="
+	@echo "bmcweb build complete!"
+	@echo "========================================="
+	@ls -lh $(REPO_ROOT)/target/debs/trixie/bmcweb*.deb 2>/dev/null || echo "No .deb files found"
+	@echo ""
 
 # Build sonic-dbus-bridge Debian package
 build-bridge:

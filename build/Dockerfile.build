@@ -2,8 +2,10 @@
 FROM debian:trixie
 
 # Install build dependencies
+# Note: Install meson and Python packages via apt (not pip) so dpkg-checkbuilddeps recognizes them
 RUN apt-get update && apt-get install -y \
     build-essential \
+    debhelper-compat \
     gcc \
     g++ \
     git \
@@ -22,13 +24,16 @@ RUN apt-get update && apt-get install -y \
     libjsoncpp-dev \
     libboost-system-dev \
     libboost-url-dev \
+    libboost-dev \
+    nlohmann-json3-dev \
     dbus \
     ninja-build \
     cmake \
+    meson \
+    python3-yaml \
+    python3-mako \
+    python3-inflection \
     && rm -rf /var/lib/apt/lists/*
-
-# Install latest Meson and required Python modules via pip
-RUN pip3 install --break-system-packages meson inflection pyyaml mako
 
 WORKDIR /workspace
 
