@@ -45,14 +45,10 @@ hiredis_dep = dependency('hiredis')
 jsoncpp_dep = dependency('jsoncpp')
 boost_dep = dependency('boost', modules: ['system'])
 threads_dep = dependency('threads')
-# sdbusplus is header-only, use bmcweb's copy
-sdbusplus_inc = include_directories('../bmcweb/subprojects/sdbusplus/include')
-# nlohmann_json is also needed by sdbusplus
-nlohmann_json_inc = include_directories('../bmcweb/subprojects/nlohmann_json-3.11.3/single_include')
-sdbusplus_dep = declare_dependency(
-    dependencies: systemd_dep,
-    include_directories: [sdbusplus_inc, nlohmann_json_inc]
-)
+
+# sdbusplus - use as meson subproject
+sdbusplus_proj = subproject('sdbusplus')
+sdbusplus_dep = sdbusplus_proj.get_variable('sdbusplus_dep')
 
 # Source files
 sources = files(
@@ -72,15 +68,6 @@ sources = files(
     # User management
     'src/user_mgr.cpp',
     'src/users.cpp',
-    # sdbusplus implementation files
-    '../bmcweb/subprojects/sdbusplus/src/bus.cpp',
-    '../bmcweb/subprojects/sdbusplus/src/event.cpp',
-    '../bmcweb/subprojects/sdbusplus/src/bus/match.cpp',
-    '../bmcweb/subprojects/sdbusplus/src/sdbus.cpp',
-    '../bmcweb/subprojects/sdbusplus/src/server/interface.cpp',
-    '../bmcweb/subprojects/sdbusplus/src/server/transaction.cpp',
-    '../bmcweb/subprojects/sdbusplus/src/message/native_types.cpp',
-    '../bmcweb/subprojects/sdbusplus/src/exception.cpp',
     # Software management
     'src/software_mgr.cpp',
     'src/switch_redis_adapter.cpp',

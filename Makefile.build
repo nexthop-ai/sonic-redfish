@@ -30,7 +30,7 @@ DOCKERFILE_BUILD := $(BUILD_DIR)/Dockerfile.build
 MAIN_TARGET := $(BMCWEB_BINARY)
 DERIVED_TARGETS := $(BRIDGE_BINARY)
 
-.PHONY: all build clean reset setup-submodules copy-patches apply-patches build-bmcweb build-bridge build-in-docker help
+.PHONY: all build clean reset setup-bmcweb copy-patches apply-patches build-bmcweb build-bridge build-in-docker help
 
 # Default target - Always uses Docker
 all: build
@@ -41,13 +41,13 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  all              - Build all components (Docker-only)"
-	@echo "  setup-submodules - Initialize and update git submodules"
+	@echo "  setup-bmcweb     - Ensure bmcweb source is ready"
 	@echo "  copy-patches     - Copy patches to debian/ directory (sonic-linux-kernel pattern)"
 	@echo "  apply-patches    - Apply patches from series file"
 	@echo "  build-bmcweb     - Build bmcweb only"
 	@echo "  build-bridge     - Build sonic-dbus-bridge only"
 	@echo "  clean            - Remove build artifacts (Docker-based)"
-	@echo "  reset            - Complete cleanup (clean + reset submodules + remove Docker images)"
+	@echo "  reset            - Complete cleanup (clean + reset bmcweb + remove Docker images)"
 	@echo ""
 	@echo "Variables:"
 	@echo "  SONIC_CONFIG_MAKE_JOBS - Number of parallel jobs (default: nproc)"
@@ -97,18 +97,27 @@ build: $(DOCKERFILE_BUILD)
 	@echo "  sonic-dbus-bridge:  $(BRIDGE_BINARY)"
 
 # Build inside Docker (called from Docker container)
-build-in-docker: setup-submodules copy-patches apply-patches build-bmcweb build-bridge
+build-in-docker: setup-bmcweb copy-patches apply-patches build-bmcweb build-bridge
 	@echo "  Build inside Docker completed"
 
-# Setup submodules
-setup-submodules:
-	@echo "Setting up git submodules..."
-	@if [ -x "$(SCRIPTS_DIR)/setup-submodules.sh" ]; then \
-		$(SCRIPTS_DIR)/setup-submodules.sh; \
-	else \
-		git submodule update --init --recursive; \
+# Setup bmcweb source
+setup-bmcweb:
+	@echo "Checking bmcweb source..."
+	@if [ ! -d "$(BMCWEB_DIR)" ]; then \
+		echo "Error: bmcweb directory not found at $(BMCWEB_DIR)"; \
+		exit 1; \
 	fi
-	@echo "  Submodules ready"
+	@if [ -d "$(BMCWEB_DIR)/.git" ]; then \
+		cd $(BMCWEB_DIR) && \
+		if ! git diff --quiet 2>/dev/null; then \
+			echo "  bmcweb has local changes (patches applied), ready"; \
+		else \
+			echo "  bmcweb source is clean, ready for patches"; \
+		fi; \
+	else \
+		echo "  bmcweb source directory ready"; \
+	fi
+	@echo "  bmcweb ready"
 
 # Copy patches to debian/ directory (sonic-linux-kernel pattern)
 copy-patches: $(SERIES_FILE)
@@ -162,16 +171,50 @@ $(BMCWEB_BINARY):
 	meson compile -C build -j $(SONIC_CONFIG_MAKE_JOBS)
 	@echo "  bmcweb built: $(BMCWEB_BINARY)"
 
-# Build sonic-dbus-bridge  
-build-bridge: $(BRIDGE_BINARY)
+# Build sonic-dbus-bridge Debian package
+build-bridge:
+	@echo "========================================="
+	@echo "Building sonic-dbus-bridge Debian package"
+	@echo "========================================="
+	@echo ""
 
-$(BRIDGE_BINARY):
-	@echo "Building sonic-dbus-bridge..."
-	@cd $(BRIDGE_DIR) && \
-	rm -rf build && \
-	meson setup build && \
-	meson compile -C build -j $(SONIC_CONFIG_MAKE_JOBS)
-	@echo "  sonic-dbus-bridge built: $(BRIDGE_BINARY)"
+	# Build Docker image if needed
+	@echo "Ensuring Docker build environment..."
+	@docker build -t $(DOCKER_BUILDER_IMAGE) -f $(DOCKERFILE_BUILD) $(BUILD_DIR) 2>/dev/null || true
+	@echo ""
+
+	# Build .deb package inside Docker
+	@echo "Building sonic-dbus-bridge .deb package in Docker..."
+	@docker run --rm \
+		-v "$(REPO_ROOT):/workspace" \
+		-w /workspace \
+		-e SONIC_CONFIG_MAKE_JOBS=$(SONIC_CONFIG_MAKE_JOBS) \
+		$(DOCKER_BUILDER_IMAGE) \
+		bash -c "\
+			set -e; \
+			git config --global --add safe.directory /workspace; \
+			git config --global --add safe.directory /workspace/bmcweb; \
+			echo 'Installing Debian packaging tools and build dependencies...'; \
+			apt-get update -qq; \
+			apt-get install -y -qq debhelper devscripts build-essential fakeroot dpkg-dev libboost-dev meson; \
+			echo 'Building sonic-dbus-bridge package...'; \
+			cd /workspace/sonic-dbus-bridge; \
+			dpkg-buildpackage -us -uc -b -j$(SONIC_CONFIG_MAKE_JOBS); \
+			echo 'Package built successfully'; \
+		"
+
+	# Create target directory and copy .deb files
+	@echo ""
+	@echo "Copying packages to target/debs/trixie/..."
+	@mkdir -p $(REPO_ROOT)/target/debs/trixie
+	@cp -v $(REPO_ROOT)/sonic-dbus-bridge_*.deb $(REPO_ROOT)/target/debs/trixie/ 2>/dev/null || true
+	@echo ""
+	@echo "========================================="
+	@echo "sonic-dbus-bridge package build complete!"
+	@echo "========================================="
+	@echo ""
+	@echo "Output:"
+	@ls -lh $(REPO_ROOT)/target/debs/trixie/sonic-dbus-bridge_*.deb 2>/dev/null || echo "  No packages found"
 
 # Clean build artifacts (Docker-based to handle permissions)
 clean:
@@ -203,7 +246,7 @@ clean:
 	@echo ""
 	@echo "Clean completed"
 
-# Reset - Complete cleanup including submodules and Docker images
+# Reset - Complete cleanup including bmcweb source and Docker images
 reset: clean
 	@echo ""
 	@echo "========================================="
@@ -213,10 +256,10 @@ reset: clean
 	@echo "Removing Docker images..."
 	@docker rmi $(DOCKER_BUILDER_IMAGE) 2>/dev/null || echo "  (Docker image not found, skipping)"
 	@echo ""
-	@echo "Resetting git submodules..."
+	@echo "Resetting bmcweb source..."
 	@cd $(BMCWEB_DIR) && git reset --hard HEAD 2>/dev/null || true
 	@cd $(BMCWEB_DIR) && git clean -fdx 2>/dev/null || true
-	@echo "  bmcweb submodule reset"
+	@echo "  bmcweb source reset"
 	@echo ""
 	@echo "Cleaning any remaining artifacts..."
 	@rm -rf $(BMCWEB_DIR)/debian 2>/dev/null || true

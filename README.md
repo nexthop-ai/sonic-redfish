@@ -5,7 +5,7 @@ SONiC Redfish implementation providing bmcweb and sonic-dbus-bridge as a unified
 ## Overview
 
 This repository contains:
-- **bmcweb**: OpenBMC web server (as git submodule) with SONiC-specific patches
+- **bmcweb**: OpenBMC web server source code with SONiC-specific patches
 - **sonic-dbus-bridge**: Bridge between SONiC Redis and D-Bus for bmcweb integration
 
 ## Quick Start
@@ -13,7 +13,7 @@ This repository contains:
 ### Prerequisites
 
 - Docker installed on your system
-- Git with submodule support
+- Git
 
 ### Build
 
@@ -38,7 +38,7 @@ make -f Makefile.build build-bridge
 # Clean build artifacts
 make -f Makefile.build clean
 
-# Complete reset (clean + reset submodules + remove Docker images)
+# Complete reset (clean + reset bmcweb source + remove Docker images)
 make -f Makefile.build reset
 ```
 
@@ -65,7 +65,7 @@ make -f Makefile.build
   ↓
 1. Build Docker image (sonic-redfish-builder)
   ↓
-2. Setup submodules (bmcweb)
+2. Check bmcweb source is ready
   ↓
 3. Copy patches to bmcweb/debian/
   ↓
@@ -87,14 +87,14 @@ Patches are located in `patches/` directory:
 - `patches/*.patch` - Individual patch files
 
 To add a new patch:
-1. Make changes in bmcweb submodule
+1. Make changes in bmcweb source directory
 2. Generate patch: `cd bmcweb && git format-patch -1 HEAD`
 3. Move patch to `patches/` directory
 4. Add patch filename to `patches/series`
 
 ## Integration with sonic-buildimage
 
-This repository is designed to be integrated as a submodule in sonic-buildimage:
+This repository is designed to be integrated into sonic-buildimage:
 
 ```bash
 cd sonic-buildimage
