@@ -1,0 +1,88 @@
+# Build output directory
+target/
+
+# Debian package build artifacts
+*.deb
+*.ddeb
+*.buildinfo
+*.changes
+*.dsc
+*.tar.gz
+*.tar.xz
+
+# sonic-dbus-bridge build artifacts
+sonic-dbus-bridge-dbgsym_*.deb
+sonic-dbus-bridge_*.deb
+sonic-dbus-bridge_*.buildinfo
+sonic-dbus-bridge_*.changes
+sonic-dbus-bridge/debian/.debhelper/
+sonic-dbus-bridge/debian/debhelper-build-stamp
+sonic-dbus-bridge/debian/files
+sonic-dbus-bridge/debian/*.debhelper.log
+sonic-dbus-bridge/debian/*.substvars
+sonic-dbus-bridge/debian/sonic-dbus-bridge/
+sonic-dbus-bridge/debian/sonic-dbus-bridge-dbgsym/
+sonic-dbus-bridge/debian/tmp/
+sonic-dbus-bridge/obj-*/
+sonic-dbus-bridge/subprojects/
+
+# Meson build directories
+build/
+builddir/
+obj-*/
+.builddir/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+*.egg
+
+# C/C++
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+core
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+*.bak
+.DS_Store
+
+# Docker
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# System files
+.directory
+Thumbs.db
+
