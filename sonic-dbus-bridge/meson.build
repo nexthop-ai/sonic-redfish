@@ -45,10 +45,7 @@ hiredis_dep = dependency('hiredis')
 jsoncpp_dep = dependency('jsoncpp')
 boost_dep = dependency('boost', modules: ['system'])
 threads_dep = dependency('threads')
-
-# sdbusplus - use as meson subproject
-sdbusplus_proj = subproject('sdbusplus')
-sdbusplus_dep = sdbusplus_proj.get_variable('sdbusplus_dep')
+sdbusplus_dep = dependency('sdbusplus')
 
 # Source files
 sources = files(

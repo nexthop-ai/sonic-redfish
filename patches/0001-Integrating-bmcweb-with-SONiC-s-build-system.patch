@@ -108,10 +108,26 @@ new file mode 100644
 index 00000000..5d12edab
 --- /dev/null
 +++ b/debian/not-installed
-@@ -0,0 +1,4 @@
+@@ -0,0 +1,20 @@
 +usr/include
 +usr/lib/*/libboost_*.a
 +usr/lib/*/pkgconfig
++usr/bin/unzstd
++usr/bin/zstd
++usr/bin/zstd-frugal
++usr/bin/zstdcat
++usr/bin/zstdgrep
++usr/bin/zstdless
++usr/bin/zstdmt
++usr/lib/*/libzstd.so
++usr/lib/*/libzstd.so.1
++usr/lib/*/libzstd.so.1.5.5
++usr/share/man/man1/unzstd.1
++usr/share/man/man1/zstd.1
++usr/share/man/man1/zstdcat.1
++usr/share/man/man1/zstdgrep.1
++usr/share/man/man1/zstdless.1
++usr/share/man/man1/zstdmt.1
 +
 diff --git a/debian/rules b/debian/rules
 new file mode 100755

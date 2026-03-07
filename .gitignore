@@ -31,16 +31,7 @@ bmcweb-dbg_*.deb
 bmcweb_*.deb
 bmcweb_*.buildinfo
 bmcweb_*.changes
-bmcweb/debian/.debhelper/
-bmcweb/debian/debhelper-build-stamp
-bmcweb/debian/files
-bmcweb/debian/*.debhelper.log
-bmcweb/debian/*.substvars
-bmcweb/debian/bmcweb/
-bmcweb/debian/bmcweb-dbg/
-bmcweb/debian/tmp/
-bmcweb/obj-*/
-bmcweb/subprojects/
+bmcweb/*
 
 # Meson build directories
 build/

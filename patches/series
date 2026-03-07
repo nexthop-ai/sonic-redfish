@@ -9,5 +9,5 @@
 0002-Skip-Authorization-when-calling-D-Bus-service-APIs-2.patch
 0003-Undo-Authorization-code-and-change-pamUpdatePassword.patch
 0004-Updated-pamUpdatePassword-code.patch
-0005-NOS-4177-Added-Github-Workflows-4.patch
+# 0005-NOS-4177-Added-Github-Workflows-4.patch
 

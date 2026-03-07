@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     systemd-dev \
     libssl-dev \
     zlib1g-dev \
+    libzstd-dev \
     libpam0g-dev \
     libnghttp2-dev \
     libtinyxml2-dev \
