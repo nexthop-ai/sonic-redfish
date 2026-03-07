@@ -177,7 +177,8 @@ apply-patches: setup-bmcweb
 	fi
 
 # Build bmcweb Debian package
-build-bmcweb: setup-bmcweb
+# Dependencies: clean → setup-bmcweb → apply-patches → build-bmcweb
+build-bmcweb: clean setup-bmcweb apply-patches
 	@echo "========================================="
 	@echo "Building bmcweb Debian package"
 	@echo "========================================="
@@ -186,28 +187,6 @@ build-bmcweb: setup-bmcweb
 	# Build Docker image if needed
 	@echo "Ensuring Docker build environment..."
 	@docker build -t $(DOCKER_BUILDER_IMAGE) -f $(DOCKERFILE_BUILD) $(BUILD_DIR) 2>/dev/null || true
-	@echo ""
-
-	# Apply patches if not already applied
-	@echo "Preparing bmcweb source..."
-	@cd $(BMCWEB_DIR) && \
-	if [ -d ".git" ] && git diff --quiet 2>/dev/null; then \
-		echo "  Applying patches from $(PATCHES_DIR)/series..."; \
-		while IFS= read -r patch || [ -n "$$patch" ]; do \
-			patch=$$(echo "$$patch" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$$//'); \
-			[ -z "$$patch" ] && continue; \
-			echo "    Applying: $$patch"; \
-			if [ -f "$(PATCHES_DIR)/$$patch" ]; then \
-				git apply "$(PATCHES_DIR)/$$patch" || { echo "Error applying $$patch"; exit 1; }; \
-			else \
-				echo "Error: Patch file not found: $$patch"; \
-				exit 1; \
-			fi; \
-		done < $(PATCHES_DIR)/series; \
-		echo "  All patches applied successfully"; \
-	else \
-		echo "  Patches already applied (bmcweb has local changes)"; \
-	fi
 	@echo ""
 
 	# Run dpkg-buildpackage inside Docker
@@ -236,7 +215,8 @@ build-bmcweb: setup-bmcweb
 	@echo ""
 
 # Build sonic-dbus-bridge Debian package
-build-bridge:
+# Dependencies: clean → build-bridge
+build-bridge: clean
 	@echo "========================================="
 	@echo "Building sonic-dbus-bridge Debian package"
 	@echo "========================================="
@@ -370,6 +350,14 @@ clean:
 	@rm -rf $(BRIDGE_DIR)/build 2>/dev/null || true
 	@rm -f $(REPO_ROOT)/*.deb $(REPO_ROOT)/*.changes $(REPO_ROOT)/*.buildinfo $(REPO_ROOT)/*.dsc $(REPO_ROOT)/*.tar.gz 2>/dev/null || true
 	@echo "  Removed package artifacts from root directory"
+
+	# Reset bmcweb source to clean state (so patches can be reapplied)
+	@echo "Resetting bmcweb source to clean state..."
+	@if [ -d "$(BMCWEB_DIR)/.git" ]; then \
+		cd $(BMCWEB_DIR) && git reset --hard HEAD 2>/dev/null || true; \
+		cd $(BMCWEB_DIR) && git clean -fd 2>/dev/null || true; \
+		echo "  bmcweb source reset to clean state"; \
+	fi
 
 	@echo ""
 	@echo "Clean completed"
