@@ -2,6 +2,18 @@
 
 SONiC Redfish implementation providing bmcweb and sonic-dbus-bridge as Debian packages.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Build System](#build-system)
+- [Patch Management](#patch-management)
+- [Cleanup Targets](#cleanup-targets)
+- [Dependency Management](#dependency-management)
+- [Components](#components)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
 ## Overview
 
 This repository contains:
@@ -76,23 +88,25 @@ The build system is designed for **Debian Trixie** and uses:
 
 ### Build Flow
 
+![Build Flow Chart](images/BuildFlowChart.png)
+
 ```
 make -f Makefile.build all
-  ↓
+
 1. Build Docker image (sonic-redfish-builder:latest)
    - Base: debian:trixie
    - Installs: build-essential, meson, debhelper, C++23 toolchain
-  ↓
+
 2. Build sonic-dbus-bridge
    - Meson downloads dependencies (sdbusplus, stdexec) via .wrap files
    - dpkg-buildpackage creates .deb packages
-  ↓
+
 3. Build bmcweb
    - Setup bmcweb source (auto-clone if needed)
    - Apply patches from patches/series
    - Meson downloads dependencies via .wrap files
    - dpkg-buildpackage creates .deb packages
-  ↓
+
 4. Collect artifacts to target/debs/trixie/
    - bmcweb_1.0.0_arm64.deb
    - bmcweb-dbg_1.0.0_arm64.deb
@@ -118,9 +132,7 @@ Patches are located in `patches/` directory:
 
 Current patches:
 1. `0001-Integrating-bmcweb-with-SONiC-s-build-system.patch` - Adds Debian packaging
-2. `0002-Skip-Authorization-when-calling-D-Bus-service-APIs-2.patch` - D-Bus auth changes
-3. `0003-Undo-Authorization-code-and-change-pamUpdatePassword.patch` - PAM updates
-4. `0004-Updated-pamUpdatePassword-code.patch` - PAM refinements
+
 
 To add a new patch:
 1. Make changes in bmcweb source directory
@@ -156,15 +168,6 @@ Dependencies are managed via **Meson wrap files** (`.wrap`):
 - `sonic-dbus-bridge/subprojects/stdexec.wrap` - C++23 executors
 
 Meson automatically downloads and builds these dependencies during the build process.
-
-## Integration with sonic-buildimage
-
-This repository is designed to be integrated into sonic-buildimage:
-
-```bash
-cd sonic-buildimage
-git submodule add https://github.com/nexthop-ai/sonic-redfish.git src/sonic-redfish
-```
 
 The Debian packages can be installed in SONiC images.
 
