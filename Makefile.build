@@ -1,5 +1,4 @@
 # Makefile.build for sonic-redfish
-# Follows sonic-linux-kernel pattern - Docker-only build
 .ONESHELL:
 SHELL = /bin/bash
 .SHELLFLAGS += -e
@@ -56,9 +55,6 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  all              - Build all components (Docker-only)"
-	@echo "  setup-bmcweb     - Ensure bmcweb source is ready"
-	@echo "  copy-patches     - Copy patches to debian/ directory (sonic-linux-kernel pattern)"
-	@echo "  apply-patches    - Apply patches from series file"
 	@echo "  build-bmcweb     - Build bmcweb only"
 	@echo "  build-bridge     - Build sonic-dbus-bridge only"
 	@echo "  clean            - Remove build artifacts (Docker-based)"
@@ -143,9 +139,9 @@ setup-bmcweb:
 	fi
 	@echo "  bmcweb ready"
 
-# Copy patches to debian/ directory (sonic-linux-kernel pattern)
+# Copy patches to debian/ directory 
 copy-patches: $(SERIES_FILE)
-	@echo "Copying patches to debian/ directory (sonic-linux-kernel pattern)..."
+	@echo "Copying patches to debian/ directory ..."
 	@# Note: Patches will create debian/ directory, so we only copy series file after patches are applied
 	@echo "  Patches will be applied from $(PATCHES_DIR)"
 
@@ -251,11 +247,11 @@ build-bridge: clean
 	@echo ""
 	@echo "Collecting build artifacts to $(SONIC_REDFISH_TARGET)..."
 	@mkdir -p $(TARGET_DIR)
-	@cp -v $(REPO_ROOT)/sonic-dbus-bridge_*.deb $(TARGET_DIR)/ 2>/dev/null || true
-	@cp -v $(REPO_ROOT)/sonic-dbus-bridge-dbgsym_*.deb $(TARGET_DIR)/ 2>/dev/null || true
-	@cp -v $(REPO_ROOT)/sonic-dbus-bridge_*.changes $(TARGET_DIR)/ 2>/dev/null || true
-	@cp -v $(REPO_ROOT)/sonic-dbus-bridge_*.buildinfo $(TARGET_DIR)/ 2>/dev/null || true
-	@cp -v $(REPO_ROOT)/sonic-dbus-bridge_*.dsc $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/sonic-dbus-bridge_*.deb $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/sonic-dbus-bridge-dbgsym_*.deb $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/sonic-dbus-bridge_*.changes $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/sonic-dbus-bridge_*.buildinfo $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/sonic-dbus-bridge_*.dsc $(TARGET_DIR)/ 2>/dev/null || true
 	@echo ""
 	@echo "========================================="
 	@echo "sonic-dbus-bridge package build complete!"
@@ -279,11 +275,11 @@ build-bmcweb-native:
 	# Copy all build artifacts to target directory
 	@echo "Collecting build artifacts to $(SONIC_REDFISH_TARGET)..."
 	@mkdir -p $(TARGET_DIR)
-	@cp $(REPO_ROOT)/bmcweb_*.deb $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/bmcweb-dbg_*.deb $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/bmcweb_*.changes $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/bmcweb_*.buildinfo $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/bmcweb_*.dsc $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/bmcweb_*.deb $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/bmcweb-dbg_*.deb $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/bmcweb_*.changes $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/bmcweb_*.buildinfo $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/bmcweb_*.dsc $(TARGET_DIR)/ 2>/dev/null || true
 	@echo ""
 	@echo "========================================="
 	@echo "bmcweb build complete!"
@@ -307,11 +303,11 @@ build-bridge-native:
 	# Copy all build artifacts to target directory
 	@echo "Collecting build artifacts to $(SONIC_REDFISH_TARGET)..."
 	@mkdir -p $(TARGET_DIR)
-	@cp $(REPO_ROOT)/sonic-dbus-bridge_*.deb $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/sonic-dbus-bridge-dbgsym_*.deb $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/sonic-dbus-bridge_*.changes $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/sonic-dbus-bridge_*.buildinfo $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/sonic-dbus-bridge_*.dsc $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/sonic-dbus-bridge_*.deb $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/sonic-dbus-bridge-dbgsym_*.deb $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/sonic-dbus-bridge_*.changes $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/sonic-dbus-bridge_*.buildinfo $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/sonic-dbus-bridge_*.dsc $(TARGET_DIR)/ 2>/dev/null || true
 	@echo ""
 	@echo "========================================="
 	@echo "sonic-dbus-bridge package build complete!"

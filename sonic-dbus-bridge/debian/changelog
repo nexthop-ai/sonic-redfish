@@ -7,5 +7,5 @@ sonic-dbus-bridge (1.0.0) unstable; urgency=medium
   * Graceful degradation when data sources unavailable
   * Optimized for ASPEED ARM64 BMC with limited resources
 
- -- SONiC Team <sonic-dev@lists.sonic-net.org>  Mon, 16 Dec 2024 00:00:00 +0000
+ -- SONiC Team <sonic-dev@lists.sonic-net.org>  Mon, 09 March 2026 00:00:00 +0000
 

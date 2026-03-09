@@ -24,7 +24,10 @@ sonic-dbus-bridge/debian/sonic-dbus-bridge/
 sonic-dbus-bridge/debian/sonic-dbus-bridge-dbgsym/
 sonic-dbus-bridge/debian/tmp/
 sonic-dbus-bridge/obj-*/
-sonic-dbus-bridge/subprojects/
+
+# sonic-dbus-bridge subprojects - ignore downloaded directories, keep .wrap files
+sonic-dbus-bridge/subprojects/*/
+!sonic-dbus-bridge/subprojects/*.wrap
 
 # bmcweb build artifacts
 bmcweb-dbg_*.deb

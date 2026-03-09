@@ -11,7 +11,7 @@ Build-Depends: debhelper-compat (= 13),
                libboost-dev,
                libboost-system-dev
 Standards-Version: 4.6.2
-Homepage: https://github.com/sonic-net/sonic-buildimage
+Homepage: https://github.com/sonic-net/sonic-redfish     
 
 Package: sonic-dbus-bridge
 Architecture: any
