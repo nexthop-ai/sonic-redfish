@@ -1,3 +1,12 @@
+///////////////////////////////////////
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Nexthop AI
+// Copyright (C) 2024 SONiC Project
+// Author: Nexthop AI
+// Author: SONiC Project
+// License file: sonic-redfish/LICENSE
+///////////////////////////////////////
+
 #pragma once
 
 #include <sdbusplus/asio/object_server.hpp>
@@ -82,9 +91,6 @@ class Users
 
     // D-Bus interface for User.Attributes
     std::shared_ptr<sdbusplus::asio::dbus_interface> userIface;
-
-    // D-Bus interface for Object.Delete
-    std::shared_ptr<sdbusplus::asio::dbus_interface> deleteIface;
 };
 
 } // namespace user

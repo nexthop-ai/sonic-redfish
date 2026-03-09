@@ -1,3 +1,12 @@
+///////////////////////////////////////
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Nexthop AI
+// Copyright (C) 2024 SONiC Project
+// Author: Nexthop AI
+// Author: SONiC Project
+// License file: sonic-redfish/LICENSE
+///////////////////////////////////////
+
 #pragma once
 
 #include <optional>
@@ -125,31 +134,6 @@ struct PlatformDescription
 };
 
 /**
- * @brief Software version purpose types
- *
- * Maps to xyz.openbmc_project.Software.Version.VersionPurpose
- */
-enum class SoftwarePurpose
-{
-    BMC,    // BMC firmware
-    Host,   // Host/Switch system software
-    Other   // Other software components
-};
-
-/**
- * @brief Software inventory information
- *
- * Represents a software component for FirmwareInventory
- */
-struct SoftwareInfo
-{
-    std::string id;           // Unique identifier (e.g., "bmc", "switch")
-    std::string version;      // Version string (e.g., "1.0.0-master.12345")
-    SoftwarePurpose purpose{SoftwarePurpose::BMC};  // Software type
-    std::string description;  // Human-readable description
-};
-
-/**
  * @brief Complete inventory model
  */
 struct InventoryModel
@@ -159,7 +143,6 @@ struct InventoryModel
     ChassisState chassisState;
     std::vector<PsuInfo> psus;
     std::vector<FanInfo> fans;
-    std::vector<SoftwareInfo> software;  // Software inventory for FirmwareInventory API
 };
 
 /**

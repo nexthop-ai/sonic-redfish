@@ -1,10 +1,18 @@
+///////////////////////////////////////
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Nexthop AI
+// Copyright (C) 2024 SONiC Project
+// Author: Nexthop AI
+// Author: SONiC Project
+// License file: sonic-redfish/LICENSE
+///////////////////////////////////////
+
 #include "redis_state_publisher.hpp"
 #include "logger.hpp"
 #include <chrono>
 #include <sstream>
 #include <iomanip>
 #include <cstring>
-#include <vector>
 
 namespace sonic::dbus_bridge
 {

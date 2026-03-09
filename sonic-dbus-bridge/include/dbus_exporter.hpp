@@ -1,3 +1,12 @@
+///////////////////////////////////////
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Nexthop AI
+// Copyright (C) 2024 SONiC Project
+// Author: Nexthop AI
+// Author: SONiC Project
+// License file: sonic-redfish/LICENSE
+///////////////////////////////////////
+
 #pragma once
 
 #include "types.hpp"
@@ -16,8 +25,6 @@ namespace sonic::dbus_bridge
  * - /xyz/openbmc_project/inventory/system/chassis
  * - /xyz/openbmc_project/inventory/system/system0
  * - /xyz/openbmc_project/state/chassis0
- *
- * Note: Software objects are handled by SoftwareMgr
  */
 class DBusExporter
 {

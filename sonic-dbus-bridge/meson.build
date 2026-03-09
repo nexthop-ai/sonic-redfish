@@ -29,16 +29,15 @@ conf_data.set_quoted(
     description: 'The D-Bus busname for object mapper.',
 )
 conf_data.set_quoted(
-    'SOFTWARE_MANAGER_BUSNAME',
-    'xyz.openbmc_project.Software.BMC.Updater',
-    description: 'The D-Bus busname for software/firmware management.',
+    'STATE_HOST_BUSNAME',
+    'xyz.openbmc_project.State.Host',
+    description: 'The D-Bus busname for host state management.',
 )
 
 # Enable root user management by default
 conf_data.set('ENABLE_ROOT_USER_MGMT', true)
 
 conf_header = configure_file(output: 'config.h', configuration: conf_data)
-
 # Dependencies
 systemd_dep = dependency('libsystemd')
 hiredis_dep = dependency('hiredis')
@@ -65,10 +64,9 @@ sources = files(
     # User management
     'src/user_mgr.cpp',
     'src/users.cpp',
-    # Software management
-    'src/software_mgr.cpp',
-    'src/switch_redis_adapter.cpp',
+    'src/state_manager.cpp',
 )
+
 
 # Include directories
 inc = include_directories('include')
@@ -106,7 +104,6 @@ install_data(
     'dbus/xyz.openbmc_project.Inventory.Manager.conf',
     'dbus/xyz.openbmc_project.ObjectMapper.conf',
     'dbus/xyz.openbmc_project.User.Manager.conf',
-    'dbus/xyz.openbmc_project.Software.BMC.Updater.conf',
     install_dir: get_option('sysconfdir') / 'dbus-1' / 'system.d',
 )
 

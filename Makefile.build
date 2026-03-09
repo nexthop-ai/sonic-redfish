@@ -197,11 +197,11 @@ build-bmcweb: clean setup-bmcweb apply-patches
 
 	# Copy all build artifacts to target directory
 	@echo "Collecting build artifacts to $(SONIC_REDFISH_TARGET)..."
-	@cp $(REPO_ROOT)/bmcweb_*.deb $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/bmcweb-dbg_*.deb $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/bmcweb_*.changes $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/bmcweb_*.buildinfo $(TARGET_DIR)/ 2>/dev/null || true
-	@cp $(REPO_ROOT)/bmcweb_*.dsc $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/bmcweb_*.deb $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/bmcweb-dbg_*.deb $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/bmcweb_*.changes $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/bmcweb_*.buildinfo $(TARGET_DIR)/ 2>/dev/null || true
+	@mv $(REPO_ROOT)/bmcweb_*.dsc $(TARGET_DIR)/ 2>/dev/null || true
 	@echo ""
 	@echo "========================================="
 	@echo "bmcweb build complete!"

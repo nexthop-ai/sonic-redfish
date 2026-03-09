@@ -1,3 +1,12 @@
+///////////////////////////////////////
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Nexthop AI
+// Copyright (C) 2024 SONiC Project
+// Author: Nexthop AI
+// Author: SONiC Project
+// License file: sonic-redfish/LICENSE
+///////////////////////////////////////
+
 #pragma once
 
 #include "types.hpp"
@@ -10,7 +19,6 @@
 #include "object_mapper.hpp"
 #include "user_mgr.hpp"
 #include "state_manager.hpp"
-#include "software_mgr.hpp"
 #include "redis_state_subscriber.hpp"
 #include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/asio/object_server.hpp>
@@ -87,8 +95,8 @@ namespace sonic::dbus_bridge
             std::shared_ptr<sdbusplus::asio::connection> userConn_;
             std::unique_ptr<sdbusplus::asio::object_server> userServer_;
 
-            std::shared_ptr<sdbusplus::asio::connection> softwareConn_;
-            std::unique_ptr<sdbusplus::asio::object_server> softwareServer_;
+            std::shared_ptr<sdbusplus::asio::connection> stateConn_;
+            std::unique_ptr<sdbusplus::asio::object_server> stateServer_;
 
             // Data source adapters
             std::shared_ptr<RedisAdapter> redisAdapter_;
@@ -105,8 +113,6 @@ namespace sonic::dbus_bridge
 
             // State management
             std::unique_ptr<StateManager> stateManager_;
-            // Software management (FirmwareInventory)
-            std::unique_ptr<SoftwareMgr> softwareMgr_;
 
             // Event-driven Redis subscriber
             std::unique_ptr<RedisStateSubscriber> redisSubscriber_;
@@ -174,14 +180,6 @@ namespace sonic::dbus_bridge
              * Non-fatal if it fails - bridge continues without user management.
              */
             void initializeUserManager();
-
-            /**
-             * @brief Initialize software management subsystem
-             *
-             * Creates SoftwareMgr instance for FirmwareInventory.
-             * Non-fatal if it fails - bridge continues without software inventory.
-             */
-            void initializeSoftwareManager();
     };
 
 } // namespace sonic::dbus_bridge

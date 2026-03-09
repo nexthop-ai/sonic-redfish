@@ -1,7 +1,15 @@
+///////////////////////////////////////
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Nexthop AI
+// Copyright (C) 2024 SONiC Project
+// Author: Nexthop AI
+// Author: SONiC Project
+// License file: sonic-redfish/LICENSE
+///////////////////////////////////////
+
 #include "bridge_app.hpp"
 #include "inventory_model.hpp"
 #include "logger.hpp"
-#include "version_utils.hpp"
 #include "config.h"
 #include <systemd/sd-bus.h>
 #include <signal.h>
@@ -77,9 +85,6 @@ bool BridgeApp::initialize()
 
     // Initialize user management (non-fatal if it fails)
     initializeUserManager();
-
-    // Initialize software management for FirmwareInventory (non-fatal if it fails)
-    initializeSoftwareManager();
 
     // Start update engine
     startUpdateEngine();
@@ -183,21 +188,22 @@ bool BridgeApp::connectDbus()
         userConn_->request_name(USER_MANAGER_BUSNAME);
         userServer_ = std::make_unique<sdbusplus::asio::object_server>(userConn_);
 
-        LOG_INFO("Connected to D-Bus successfully (3 connections)");
-        // Software Manager connection (for FirmwareInventory)
-        LOG_INFO("Requesting D-Bus name: %s", SOFTWARE_MANAGER_BUSNAME);
+        LOG_INFO("Connected to D-Bus successfully (2 connections)");
+
+        // State.Host connection
+        LOG_INFO("Requesting D-Bus name: %s", STATE_HOST_BUSNAME);
         bus = nullptr;
         r = sd_bus_open_system(&bus);
         if (r < 0)
         {
-            LOG_ERROR("Failed to open system bus for Software Manager: %s", strerror(-r));
+            LOG_ERROR("Failed to open system bus for State.Host: %s", strerror(-r));
             return false;
         }
-        softwareConn_ = std::make_shared<sdbusplus::asio::connection>(io_, bus);
-        softwareConn_->request_name(SOFTWARE_MANAGER_BUSNAME);
-        softwareServer_ = std::make_unique<sdbusplus::asio::object_server>(softwareConn_);
+        stateConn_ = std::make_shared<sdbusplus::asio::connection>(io_, bus);
+        stateConn_->request_name(STATE_HOST_BUSNAME);
+        stateServer_ = std::make_unique<sdbusplus::asio::object_server>(stateConn_);
 
-        LOG_INFO("Connected to D-Bus successfully (4 connections)");
+        LOG_INFO("Connected to D-Bus successfully (5 connections)");
         return true;
     }
     catch (const std::exception& e)
@@ -332,8 +338,8 @@ void BridgeApp::createDbusObjects()
 
 void BridgeApp::createStateObjects()
 {
-    // Use inventory connection for state objects
-    stateManager_ = std::make_unique<StateManager>(*inventoryServer_, io_);
+    // Use dedicated State.Host connection for state objects
+    stateManager_ = std::make_unique<StateManager>(*stateServer_, io_);
 
     if (!stateManager_->createStateObjects())
     {
@@ -462,25 +468,25 @@ void BridgeApp::initializeUserManager()
         userMgr_ = std::make_unique<sonic::user::UserMgr>(
             *userServer_, "/xyz/openbmc_project/user", objectMapper_.get());
 
-        // Register user manager with ObjectMapper for bmcweb discovery
+	        // Register user manager with ObjectMapper for bmcweb discovery
         if (objectMapper_)
         {
-            objectMapper_->registerObject(
-                "/xyz/openbmc_project/user",
-                {USER_MANAGER_BUSNAME},
-                USER_MANAGER_BUSNAME);
+	            objectMapper_->registerObject(
+	                "/xyz/openbmc_project/user",
+	                {USER_MANAGER_BUSNAME},
+	                USER_MANAGER_BUSNAME);
 
-            // Register each existing user object with User.Manager service name
-            // (newly created users will be registered by UserMgr::createUser)
-            for (const auto& [username, userObj] : userMgr_->getUsers())
-            {
-                std::string userPath = "/xyz/openbmc_project/user/" + username;
-                objectMapper_->registerObject(
-                    userPath,
-                    {"xyz.openbmc_project.User.Attributes",
-                     "xyz.openbmc_project.Object.Delete"},
-                    USER_MANAGER_BUSNAME);
-            }
+	            // Register each existing user object with User.Manager service name.
+	            // User objects are read-only; creation/deletion is handled outside
+	            // of sonic-dbus-bridge.
+	            for (const auto& [username, userObj] : userMgr_->getUsers())
+	            {
+	                std::string userPath = "/xyz/openbmc_project/user/" + username;
+	                objectMapper_->registerObject(
+	                    userPath,
+	                    {"xyz.openbmc_project.User.Attributes"},
+	                    USER_MANAGER_BUSNAME);
+	            }
         }
 
         LOG_INFO("User management initialized successfully");
@@ -490,33 +496,6 @@ void BridgeApp::initializeUserManager()
         LOG_ERROR("Failed to initialize user management: %s", e.what());
         LOG_WARNING("User management not available");
         userMgr_.reset();
-    }
-}
-
-void BridgeApp::initializeSoftwareManager()
-{
-    LOG_INFO("Initializing software management...");
-
-    try
-    {
-        // Create software manager using software connection
-        softwareMgr_ = std::make_unique<SoftwareMgr>(
-            *softwareServer_, objectMapper_.get());
-
-        if (!softwareMgr_->initialize())
-        {
-            LOG_ERROR("Failed to initialize software manager");
-            softwareMgr_.reset();
-            return;
-        }
-
-        LOG_INFO("Software management initialized successfully");
-    }
-    catch (const std::exception& e)
-    {
-        LOG_ERROR("Failed to initialize software management: %s", e.what());
-        LOG_WARNING("Software management not available");
-        softwareMgr_.reset();
     }
 }
 

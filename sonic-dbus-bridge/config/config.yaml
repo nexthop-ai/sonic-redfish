@@ -1,4 +1,13 @@
+
+# ####################################
 # SONiC D-Bus Bridge Configuration
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (C) 2026 Nexthop AI
+# Copyright (C) 2024 SONiC Project
+# Author: Nexthop AI
+# Author: SONiC Project
+# License file: sonic-redfish/LICENSE
+# ####################################
 
 # Redis connection settings
 redis:
@@ -17,42 +26,43 @@ redis:
     initial_backoff_ms: 1000
     max_backoff_ms: 30000
 
-# Platform data sources
-platform:
-  # ${PLATFORM} will be expanded from environment
-  json_path: /usr/share/sonic/device/${PLATFORM}/platform.json
-  fru_eeprom_paths:
-    - /sys/bus/i2c/devices/0-0050/eeprom
+      # Platform data sources
+    platform:
+      # ${PLATFORM} will be expanded from environment
+      json_path: /usr/share/sonic/device/${PLATFORM}/platform.json
+    fru_eeprom_paths:
+      - /sys/bus/i2c/devices/0-0050/eeprom
     - /sys/bus/i2c/devices/1-0051/eeprom
     - /sys/bus/i2c/devices/2-0052/eeprom
-  auto_detect_fru: true
+    auto_detect_fru: true
 
-# D-Bus settings
-dbus:
-  service_name: xyz.openbmc_project.Inventory
-  system_bus: true
+      # D-Bus settings
+    dbus:
+      service_name: xyz.openbmc_project.Inventory
+    system_bus: true
 
-# Update behavior
-update:
-  poll_interval_sec: 30
-  enable_redis_pubsub: false  # Not available on ASPEED yet
+      # Update behavior
+    update:
+      poll_interval_sec: 30
+    enable_redis_pubsub: false  # Not available on ASPEED yet
 
-# Logging
-logging:
-  level: INFO  # DEBUG, INFO, WARNING, ERROR
-  use_systemd_journal: true
-  file_path: /var/log/sonic-dbus-bridge.log
-  max_file_size_mb: 10
+      # Logging
+    logging:
+      level: INFO  # DEBUG, INFO, WARNING, ERROR
+    use_systemd_journal: true
+    file_path: /var/log/sonic-dbus-bridge.log
+    max_file_size_mb: 10
 
-# Feature flags
-features:
-  enable_sensors: false  # Phase 2
-  enable_power_control: false  # Phase 2
-  enable_persistence: false  # Phase 2
+      # Feature flags
+    features:
+      enable_sensors: false  # Phase 2
+    enable_power_control: false  # Phase 2
+    enable_persistence: false  # Phase 2
 
-# Persistence (when enabled)
-persistence:
-  enabled: false
-  state_file: /var/lib/sonic-dbus-bridge/state.json
-  save_interval_sec: 300  # Save every 5 minutes
+      # Persistence (when enabled)
+    persistence:
+      enabled: false
+    state_file: /var/lib/sonic-dbus-bridge/state.json
+    save_interval_sec: 300  # Save every 5 minutes
+
 
