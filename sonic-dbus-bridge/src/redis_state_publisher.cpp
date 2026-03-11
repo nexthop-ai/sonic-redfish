@@ -36,53 +36,97 @@ RedisStatePublisher::~RedisStatePublisher()
 
 bool RedisStatePublisher::connect(const std::string& host, int port)
 {
-    LOG_INFO( "[RedisStatePublisher] Connecting to Redis at %s:%d", host.c_str(), port);
-    
-    struct timeval timeout = {2, 0}; // 2 seconds timeout
-    stateDbContext_ = redisConnectWithTimeout(host.c_str(), port, timeout);
-    
-    if (!stateDbContext_)
-    {
-        LOG_ERROR( "[RedisStatePublisher] Redis connection failed: allocation error");
-        return false;
-    }
-    
-    if (stateDbContext_->err)
-    {
-        LOG_ERROR( "[RedisStatePublisher] Redis connection failed: %s (errno: %d)",
-               stateDbContext_->errstr, stateDbContext_->err);
-        redisFree(stateDbContext_);
-        stateDbContext_ = nullptr;
-        return false;
-    }
-    
-    LOG_INFO( "[RedisStatePublisher] Connected to Redis successfully");
-    
-    // Select STATE_DB (DB 6)
-    LOG_INFO( "[RedisStatePublisher] Selecting STATE_DB (DB 6)");
-    redisReply* reply = (redisReply*)redisCommand(stateDbContext_, "SELECT 6");
-    
-    if (!reply)
-    {
-        LOG_ERROR( "[RedisStatePublisher] SELECT command failed: connection lost");
-        redisFree(stateDbContext_);
-        stateDbContext_ = nullptr;
-        return false;
-    }
-    
-    if (reply->type == REDIS_REPLY_ERROR)
-    {
-        LOG_ERROR( "[RedisStatePublisher] SELECT command failed: %s", reply->str);
-        freeReplyObject(reply);
-        redisFree(stateDbContext_);
-        stateDbContext_ = nullptr;
-        return false;
-    }
-    
-    freeReplyObject(reply);
-    LOG_INFO( "[RedisStatePublisher] STATE_DB (DB 6) selected successfully");
-    
-    return true;
+	LOG_INFO( "[RedisStatePublisher] Connecting to Redis at %s:%d", host.c_str(), port);
+
+	struct timeval timeout = {2, 0}; // 2 seconds timeout
+	bool connected = false;
+
+	// Try TCP first (same pattern as RedisAdapter)
+	stateDbContext_ = redisConnectWithTimeout(host.c_str(), port, timeout);
+	if (!stateDbContext_)
+	{
+	    LOG_ERROR( "[RedisStatePublisher] TCP: Redis connection failed: allocation error");
+	}
+	else if (stateDbContext_->err)
+	{
+	    LOG_DEBUG( "[RedisStatePublisher] TCP: connection failed: %s (errno: %d)",
+	               stateDbContext_->errstr, stateDbContext_->err);
+	    redisFree(stateDbContext_);
+	    stateDbContext_ = nullptr;
+	}
+	else
+	{
+	    LOG_INFO( "[RedisStatePublisher] Connected to Redis via TCP: %s:%d",
+	              host.c_str(), port);
+	    connected = true;
+	}
+
+	// If TCP failed, fall back to Unix domain sockets under /var/run/redis
+	if (!connected)
+	{
+	    const char* unixSockets[] = {
+	        "/var/run/redis/redis.sock",
+	        "/run/redis/redis.sock",
+	        "/var/run/redis.sock",
+	        nullptr
+	    };
+
+	    for (int i = 0; unixSockets[i] != nullptr && !connected; ++i)
+	    {
+	        LOG_DEBUG( "[RedisStatePublisher] Unix socket: attempting %s", unixSockets[i]);
+	        stateDbContext_ = redisConnectUnixWithTimeout(unixSockets[i], timeout);
+
+	        if (!stateDbContext_)
+	        {
+	            LOG_ERROR( "[RedisStatePublisher] Unix socket: failed to allocate Redis context");
+	        }
+	        else if (stateDbContext_->err)
+	        {
+	            LOG_DEBUG( "[RedisStatePublisher] Unix socket: connection failed: %s (errno: %d)",
+	                       stateDbContext_->errstr, stateDbContext_->err);
+	            redisFree(stateDbContext_);
+	            stateDbContext_ = nullptr;
+	        }
+	        else
+	        {
+	            LOG_INFO( "[RedisStatePublisher] Connected to Redis via Unix socket: %s",
+	                      unixSockets[i]);
+	            connected = true;
+	        }
+	    }
+	}
+
+	if (!connected || !stateDbContext_)
+	{
+	    LOG_ERROR( "[RedisStatePublisher] All Redis connection attempts failed");
+	    return false;
+	}
+
+	// Select STATE_DB (DB 6)
+	LOG_INFO( "[RedisStatePublisher] Selecting STATE_DB (DB 6)");
+	redisReply* reply = (redisReply*)redisCommand(stateDbContext_, "SELECT 6");
+
+	if (!reply)
+	{
+	    LOG_ERROR( "[RedisStatePublisher] SELECT command failed: connection lost");
+	    redisFree(stateDbContext_);
+	    stateDbContext_ = nullptr;
+	    return false;
+	}
+
+	if (reply->type == REDIS_REPLY_ERROR)
+	{
+	    LOG_ERROR( "[RedisStatePublisher] SELECT command failed: %s", reply->str);
+	    freeReplyObject(reply);
+	    redisFree(stateDbContext_);
+	    stateDbContext_ = nullptr;
+	    return false;
+	}
+
+	freeReplyObject(reply);
+	LOG_INFO( "[RedisStatePublisher] STATE_DB (DB 6) selected successfully");
+
+	return true;
 }
 
 std::string RedisStatePublisher::generateRequestId()
