@@ -107,7 +107,7 @@ new file mode 100644
 index 00000000..5d12edab
 --- /dev/null
 +++ b/debian/not-installed
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,22 @@
 +usr/include
 +usr/lib/*/libboost_*.a
 +usr/lib/*/pkgconfig
