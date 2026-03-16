@@ -1,4 +1,4 @@
-# Makefile.build for sonic-redfish
+# Makefile for sonic-redfish
 .ONESHELL:
 SHELL = /bin/bash
 .SHELLFLAGS += -e
@@ -67,12 +67,12 @@ help:
 	@echo "  BMCWEB_REPO_URL         - bmcweb repository URL (default: https://github.com/openbmc/bmcweb.git)"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make -f Makefile.build                                    # Build with Docker (auto-clone bmcweb if needed)"
-	@echo "  make -f Makefile.build clean                              # Clean build artifacts"
-	@echo "  make -f Makefile.build reset                              # Complete reset"
-	@echo "  make -f Makefile.build SONIC_CONFIG_MAKE_JOBS=4           # Build with 4 parallel jobs"
-	@echo "  make -f Makefile.build BMCWEB_HEAD_COMMIT=abc123          # Build with specific bmcweb commit"
-	@echo "  make -f Makefile.build SONIC_REDFISH_TARGET=output/debs   # Use custom output directory"
+	@echo "  make -f Makefile                                    # Build with Docker (auto-clone bmcweb if needed)"
+	@echo "  make -f Makefile clean                              # Clean build artifacts"
+	@echo "  make -f Makefile reset                              # Complete reset"
+	@echo "  make -f Makefile SONIC_CONFIG_MAKE_JOBS=4           # Build with 4 parallel jobs"
+	@echo "  make -f Makefile BMCWEB_HEAD_COMMIT=abc123          # Build with specific bmcweb commit"
+	@echo "  make -f Makefile SONIC_REDFISH_TARGET=output/debs   # Use custom output directory"
 	@echo ""
 	@echo "NOTE: This build system is Docker-only for consistency with sonic-buildimage"
 	@echo "      bmcweb will be automatically cloned if not present"
@@ -101,7 +101,7 @@ build: $(DOCKERFILE_BUILD)
 			set -e; \
 			git config --global --add safe.directory /workspace; \
 			git config --global --add safe.directory /workspace/bmcweb; \
-			make -f Makefile.build build-in-docker; \
+			make -f Makefile build-in-docker; \
 		"
 
 	@echo ""
@@ -412,5 +412,5 @@ reset: clean
 	@echo "Workspace reset complete!"
 	@echo "========================================="
 	@echo ""
-	@echo "You can now run: make -f Makefile.build"
+	@echo "You can now run: make -f Makefile"
 
