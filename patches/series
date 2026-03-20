@@ -6,4 +6,5 @@
 # Patches are applied in order from top to bottom
 
 0001-Integrating-bmcweb-with-SONiC-s-build-system.patch
+0002-Add-Product-field-to-Redfish-service-root.patch
 
