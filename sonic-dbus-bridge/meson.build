@@ -33,6 +33,16 @@ conf_data.set_quoted(
     'xyz.openbmc_project.State.Host',
     description: 'The D-Bus busname for host state management.',
 )
+conf_data.set_quoted(
+    'CERT_MANAGER_BUSNAME',
+    'xyz.openbmc_project.Certs.Manager.Authority.Truststore',
+    description: 'The D-Bus busname for certificate management.',
+)
+conf_data.set_quoted(
+    'HTTPS_CERT_MANAGER_BUSNAME',
+    'xyz.openbmc_project.Certs.Manager.Server.Https',
+    description: 'The D-Bus busname for HTTPS certificate management.',
+)
 
 # Enable root user management by default
 conf_data.set('ENABLE_ROOT_USER_MGMT', true)
@@ -45,6 +55,7 @@ jsoncpp_dep = dependency('jsoncpp')
 boost_dep = dependency('boost', modules: ['system'])
 threads_dep = dependency('threads')
 sdbusplus_dep = dependency('sdbusplus')
+openssl_dep = dependency('openssl')
 
 # Source files
 sources = files(
@@ -64,7 +75,10 @@ sources = files(
     # User management
     'src/user_mgr.cpp',
     'src/users.cpp',
-    'src/state_manager.cpp',
+    # Certificate management
+    'src/certificate_manager.cpp',
+    'src/certificate.cpp',
+    'src/x509_utils.cpp',
 )
 
 
@@ -84,6 +98,7 @@ executable(
         boost_dep,
         threads_dep,
         sdbusplus_dep,
+        openssl_dep,
     ],
     link_args: ['-lcrypt'],
     install: true,
@@ -104,6 +119,8 @@ install_data(
     'dbus/xyz.openbmc_project.Inventory.Manager.conf',
     'dbus/xyz.openbmc_project.ObjectMapper.conf',
     'dbus/xyz.openbmc_project.User.Manager.conf',
+    'dbus/xyz.openbmc_project.Certs.Manager.Authority.Truststore.conf',
+    'dbus/xyz.openbmc_project.Certs.Manager.Server.Https.conf',
     install_dir: get_option('sysconfdir') / 'dbus-1' / 'system.d',
 )
 

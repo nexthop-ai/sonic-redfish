@@ -20,6 +20,7 @@
 #include "user_mgr.hpp"
 #include "state_manager.hpp"
 #include "redis_state_subscriber.hpp"
+#include "certificate_manager.hpp"
 #include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/asio/object_server.hpp>
 #include <boost/asio/io_context.hpp>
@@ -98,6 +99,12 @@ namespace sonic::dbus_bridge
             std::shared_ptr<sdbusplus::asio::connection> stateConn_;
             std::unique_ptr<sdbusplus::asio::object_server> stateServer_;
 
+            std::shared_ptr<sdbusplus::asio::connection> certConn_;
+            std::unique_ptr<sdbusplus::asio::object_server> certServer_;
+
+            std::shared_ptr<sdbusplus::asio::connection> httpsCertConn_;
+            std::unique_ptr<sdbusplus::asio::object_server> httpsCertServer_;
+
             // Data source adapters
             std::shared_ptr<RedisAdapter> redisAdapter_;
             std::unique_ptr<PlatformJsonAdapter> platformAdapter_;
@@ -113,6 +120,10 @@ namespace sonic::dbus_bridge
 
             // State management
             std::unique_ptr<StateManager> stateManager_;
+
+            // Certificate management
+            std::unique_ptr<sonic::certs::CertificateManager> certManager_;
+            std::unique_ptr<sonic::certs::CertificateManager> httpsCertManager_;
 
             // Event-driven Redis subscriber
             std::unique_ptr<RedisStateSubscriber> redisSubscriber_;
@@ -180,6 +191,22 @@ namespace sonic::dbus_bridge
              * Non-fatal if it fails - bridge continues without user management.
              */
             void initializeUserManager();
+
+            /**
+             * @brief Initialize certificate management subsystem
+             *
+             * Creates CertificateManager instance for handling mTLS certificates.
+             * Non-fatal if it fails - bridge continues without certificate management.
+             */
+            void initializeCertificateManager();
+
+            /**
+             * @brief Initialize HTTPS certificate management subsystem
+             *
+             * Creates CertificateManager instance for handling HTTPS server certificates.
+             * Non-fatal if it fails - bridge continues without HTTPS certificate management.
+             */
+            void initializeHttpsCertificateManager();
     };
 
 } // namespace sonic::dbus_bridge

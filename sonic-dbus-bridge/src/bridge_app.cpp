@@ -13,6 +13,7 @@
 #include "config.h"
 #include <systemd/sd-bus.h>
 #include <signal.h>
+#include <filesystem>
 
 namespace sonic::dbus_bridge
 {
@@ -85,6 +86,12 @@ bool BridgeApp::initialize()
 
     // Initialize user management (non-fatal if it fails)
     initializeUserManager();
+
+    // Initialize certificate management (non-fatal if it fails)
+    initializeCertificateManager();
+
+    // Initialize HTTPS certificate management (non-fatal if it fails)
+    initializeHttpsCertificateManager();
 
     // Start update engine
     startUpdateEngine();
@@ -203,7 +210,33 @@ bool BridgeApp::connectDbus()
         stateConn_->request_name(STATE_HOST_BUSNAME);
         stateServer_ = std::make_unique<sdbusplus::asio::object_server>(stateConn_);
 
-        LOG_INFO("Connected to D-Bus successfully (5 connections)");
+        // Certificate Manager connection
+        LOG_INFO("Requesting D-Bus name: %s", CERT_MANAGER_BUSNAME);
+        bus = nullptr;
+        r = sd_bus_open_system(&bus);
+        if (r < 0)
+        {
+            LOG_ERROR("Failed to open system bus for Certificate Manager: %s", strerror(-r));
+            return false;
+        }
+        certConn_ = std::make_shared<sdbusplus::asio::connection>(io_, bus);
+        certConn_->request_name(CERT_MANAGER_BUSNAME);
+        certServer_ = std::make_unique<sdbusplus::asio::object_server>(certConn_);
+
+        // HTTPS Certificate Manager connection
+        LOG_INFO("Requesting D-Bus name: %s", HTTPS_CERT_MANAGER_BUSNAME);
+        bus = nullptr;
+        r = sd_bus_open_system(&bus);
+        if (r < 0)
+        {
+            LOG_ERROR("Failed to open system bus for HTTPS Certificate Manager: %s", strerror(-r));
+            return false;
+        }
+        httpsCertConn_ = std::make_shared<sdbusplus::asio::connection>(io_, bus);
+        httpsCertConn_->request_name(HTTPS_CERT_MANAGER_BUSNAME);
+        httpsCertServer_ = std::make_unique<sdbusplus::asio::object_server>(httpsCertConn_);
+
+        LOG_INFO("Connected to D-Bus successfully (7 connections)");
         return true;
     }
     catch (const std::exception& e)
@@ -496,6 +529,88 @@ void BridgeApp::initializeUserManager()
         LOG_ERROR("Failed to initialize user management: %s", e.what());
         LOG_WARNING("User management not available");
         userMgr_.reset();
+    }
+}
+
+void BridgeApp::initializeCertificateManager()
+{
+    LOG_INFO("Initializing certificate management...");
+
+    try
+    {
+        // Create certificate manager using certificate connection
+        // Convert unique_ptr to shared_ptr for the object server
+        auto certServerShared = std::shared_ptr<sdbusplus::asio::object_server>(
+            certServer_.get(), [](sdbusplus::asio::object_server*){});
+
+        certManager_ = std::make_unique<sonic::certs::CertificateManager>(
+            io_,
+            certServerShared,
+            "/xyz/openbmc_project/certs/authority/truststore",
+            "/etc/ssl/certs/authority",
+            "bmcweb.service",
+            objectMapper_.get(),
+            CERT_MANAGER_BUSNAME
+        );
+
+        // Register certificate manager with ObjectMapper for bmcweb discovery
+        if (objectMapper_)
+        {
+            objectMapper_->registerObject(
+                "/xyz/openbmc_project/certs/authority/truststore",
+                {"xyz.openbmc_project.Certs.Install",
+                 "xyz.openbmc_project.Collection.DeleteAll"},
+                CERT_MANAGER_BUSNAME);
+        }
+
+        LOG_INFO("Certificate management initialized successfully");
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("Failed to initialize certificate management: %s", e.what());
+        LOG_WARNING("Certificate management not available");
+        certManager_.reset();
+    }
+}
+
+void BridgeApp::initializeHttpsCertificateManager()
+{
+    LOG_INFO("Initializing HTTPS certificate management...");
+
+    try
+    {
+        // Create HTTPS certificate manager using HTTPS certificate connection
+        // Convert unique_ptr to shared_ptr for the object server
+        auto httpsCertServerShared = std::shared_ptr<sdbusplus::asio::object_server>(
+            httpsCertServer_.get(), [](sdbusplus::asio::object_server*){});
+
+        httpsCertManager_ = std::make_unique<sonic::certs::CertificateManager>(
+            io_,
+            httpsCertServerShared,
+            "/xyz/openbmc_project/certs/server/https",
+            "/etc/ssl/certs/https",
+            "bmcweb.service",
+            objectMapper_.get(),
+            HTTPS_CERT_MANAGER_BUSNAME
+        );
+
+        // Register HTTPS certificate manager with ObjectMapper for bmcweb discovery
+        if (objectMapper_)
+        {
+            objectMapper_->registerObject(
+                "/xyz/openbmc_project/certs/server/https",
+                {"xyz.openbmc_project.Certs.Install",
+                 "xyz.openbmc_project.Collection.DeleteAll"},
+                HTTPS_CERT_MANAGER_BUSNAME);
+        }
+
+        LOG_INFO("HTTPS certificate management initialized successfully");
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("Failed to initialize HTTPS certificate management: %s", e.what());
+        LOG_WARNING("HTTPS certificate management not available");
+        httpsCertManager_.reset();
     }
 }
 
