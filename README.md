@@ -10,6 +10,7 @@ SONiC Redfish implementation providing bmcweb and sonic-dbus-bridge as Debian pa
 - [Patch Management](#patch-management)
 - [Cleanup Targets](#cleanup-targets)
 - [Dependency Management](#dependency-management)
+- [Configuration](#configuration)
 - [Components](#components)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
@@ -34,10 +35,10 @@ Both components are built as Debian packages (`.deb`) for easy integration with 
 
 ```bash
 # Build all components (Docker-based, produces .deb packages)
-make -f Makefile.build
+make
 
 # Or explicitly
-make -f Makefile.build all
+make all
 ```
 
 Build artifacts will be available in `target/debs/trixie/`:
@@ -50,30 +51,33 @@ Build artifacts will be available in `target/debs/trixie/`:
 
 ```bash
 # Show all available targets
-make -f Makefile.build help
+make help
 
 # Build individual components (automatically runs clean + dependencies)
-make -f Makefile.build build-bmcweb    # Runs: clean → setup-bmcweb → apply-patches → build
-make -f Makefile.build build-bridge    # Runs: clean → build
+make build-bmcweb    # Runs: clean → setup-bmcweb → apply-patches → build
+make build-bridge    # Runs: clean → build
 
 # Clean build artifacts (removes build dirs, resets bmcweb source)
-make -f Makefile.build clean
+make clean
 
 # Complete reset (clean + remove Docker images + full git reset)
-make -f Makefile.build reset
+make reset
 ```
 
 ### Build Options
 
 ```bash
 # Use custom number of parallel jobs (default: nproc)
-make -f Makefile.build SONIC_CONFIG_MAKE_JOBS=8
+make SONIC_CONFIG_MAKE_JOBS=8
 
 # Use custom output directory (default: target/debs/trixie)
-make -f Makefile.build SONIC_REDFISH_TARGET=output/debs
+make SONIC_REDFISH_TARGET=output/debs
 
 # Build with specific bmcweb commit (default: 6926d430)
-make -f Makefile.build BMCWEB_HEAD_COMMIT=abc123
+make BMCWEB_HEAD_COMMIT=abc123
+
+# Build with custom bmcweb repository URL
+make BMCWEB_REPO_URL=https://github.com/custom/bmcweb.git
 ```
 
 ## Build System
@@ -91,23 +95,28 @@ The build system is designed for **Debian Trixie** and uses:
 ![Build Flow Chart](images/BuildFlowChart.png)
 
 ```
-make -f Makefile.build all
+make all
 
 1. Build Docker image (sonic-redfish-builder:latest)
    - Base: debian:trixie
-   - Installs: build-essential, meson, debhelper, C++23 toolchain
+   - Installs: build-essential, meson, debhelper, C++23 toolchain, sdbusplus
 
-2. Build sonic-dbus-bridge
+2. Setup bmcweb source
+   - Auto-clone from GitHub if not present
+   - Checkout to specified commit (default: 6926d430)
+
+3. Apply patches
+   - Apply patches from patches/series to bmcweb source
+
+4. Build sonic-dbus-bridge
    - Meson downloads dependencies (sdbusplus, stdexec) via .wrap files
    - dpkg-buildpackage creates .deb packages
 
-3. Build bmcweb
-   - Setup bmcweb source (auto-clone if needed)
-   - Apply patches from patches/series
+5. Build bmcweb
    - Meson downloads dependencies via .wrap files
    - dpkg-buildpackage creates .deb packages
 
-4. Collect artifacts to target/debs/trixie/
+6. Collect artifacts to target/debs/trixie/
    - bmcweb_1.0.0_arm64.deb
    - bmcweb-dbg_1.0.0_arm64.deb
    - sonic-dbus-bridge_1.0.0_arm64.deb
@@ -175,22 +184,53 @@ The Debian packages can be installed in SONiC images.
 
 ### bmcweb
 - **Source**: https://github.com/openbmc/bmcweb
-- **Base commit**: 6926d430
+- **Base commit**: 6926d430 (configurable via `BMCWEB_HEAD_COMMIT`)
 - **License**: Apache-2.0
-- **Purpose**: Redfish API server
+- **Purpose**: Redfish API server providing standard Redfish REST API
 - **Build system**: Meson + Debian packaging
 - **Output**: `bmcweb_1.0.0_arm64.deb`, `bmcweb-dbg_1.0.0_arm64.deb`
+- **Auto-clone**: Automatically cloned from GitHub if not present
 
 ### sonic-dbus-bridge
 - **License**: Apache-2.0
-- **Purpose**: Bridge SONiC Redis database to D-Bus for bmcweb
+- **Purpose**: Bridge SONiC Redis database to D-Bus for bmcweb integration
+- **Features**:
+  - Redis to D-Bus data synchronization
+  - Platform inventory management
+  - FRU EEPROM data export
+  - User management integration
+  - State management (host, chassis)
 - **Build system**: Meson + Debian packaging
 - **Output**: `sonic-dbus-bridge_1.0.0_arm64.deb`, `sonic-dbus-bridge-dbgsym_1.0.0_arm64.deb`
+- **Configuration**: `config/config.yaml` for Redis, D-Bus, and platform settings
+
+## Configuration
+
+### sonic-dbus-bridge Configuration
+
+The bridge is configured via `sonic-dbus-bridge/config/config.yaml`:
+
+- **Redis settings**: Connection parameters for CONFIG_DB and STATE_DB
+- **Platform data**: Path to platform.json and FRU EEPROM locations
+- **D-Bus settings**: Service name and bus configuration
+- **Update behavior**: Polling intervals and pub/sub settings
+- **Logging**: Log levels and output configuration
+
+### D-Bus Configuration Files
+
+D-Bus security policies are defined in `sonic-dbus-bridge/dbus/`:
+- `xyz.openbmc_project.Inventory.Manager.conf` - Inventory management
+- `xyz.openbmc_project.ObjectMapper.conf` - Object mapper service
+- `xyz.openbmc_project.State.Host.conf` - Host state management
+- `xyz.openbmc_project.User.Manager.conf` - User management
+- `xyz.openbmc_project.bmcweb.conf` - bmcweb service
+
+These files are installed to `/etc/dbus-1/system.d/` during package installation.
 
 ## Troubleshooting
 
 ### Build fails with "debian/changelog: No such file or directory"
-Run `make -f Makefile.build reset` to completely clean the workspace, then rebuild.
+Run `make reset` to completely clean the workspace, then rebuild.
 
 ### Permission denied when cleaning
 The build creates root-owned files inside Docker. The Makefile uses `sudo rm` to clean them.

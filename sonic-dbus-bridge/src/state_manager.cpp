@@ -29,6 +29,7 @@ constexpr const char* HOST_TRANS_ON = "xyz.openbmc_project.State.Host.Transition
 constexpr const char* HOST_TRANS_OFF = "xyz.openbmc_project.State.Host.Transition.Off";
 constexpr const char* HOST_TRANS_REBOOT = "xyz.openbmc_project.State.Host.Transition.Reboot";
 constexpr const char* HOST_TRANS_FORCE_WARM_REBOOT = "xyz.openbmc_project.State.Host.Transition.ForceWarmReboot";
+constexpr const char* HOST_TRANS_POWER_CYCLE = "xyz.openbmc_project.State.Host.Transition.PowerCycle";
 
 // Host state values
 constexpr const char* HOST_STATE_OFF = "xyz.openbmc_project.State.Host.HostState.Off";
@@ -272,11 +273,8 @@ std::string StateManager::transitionToScriptCommand(const std::string& transitio
     {
         return "reset-in";
     }
-    else if (transition == HOST_TRANS_REBOOT)
-    {
-        return "reset-cycle";
-    }
-    else if (transition == HOST_TRANS_FORCE_WARM_REBOOT)
+    else if (transition == HOST_TRANS_REBOOT || transition == HOST_TRANS_POWER_CYCLE ||
+             transition == HOST_TRANS_FORCE_WARM_REBOOT)
     {
         return "reset-cycle";
     }
@@ -292,7 +290,8 @@ bool StateManager::isValidTransition(const std::string& transition)
     return transition == HOST_TRANS_ON ||
            transition == HOST_TRANS_OFF ||
            transition == HOST_TRANS_REBOOT ||
-           transition == HOST_TRANS_FORCE_WARM_REBOOT;
+           transition == HOST_TRANS_FORCE_WARM_REBOOT ||
+           transition == HOST_TRANS_POWER_CYCLE;
 }
 
 } // namespace sonic::dbus_bridge
