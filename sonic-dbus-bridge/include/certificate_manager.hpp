@@ -110,6 +110,16 @@ namespace sonic::certs
             void restoreCertificates();
 
             /**
+             * @brief Update server.pem with new certificate
+             *
+             * For HTTPS server certificates, updates the server.pem file that bmcweb reads.
+             * Creates a backup before updating.
+             *
+             * @param pemString PEM-encoded certificate + private key
+             */
+            void updateServerPem(const std::string& pemString);
+
+            /**
              * @brief Reload the configured systemd service
              *
              * Triggers service reload to pick up new certificates

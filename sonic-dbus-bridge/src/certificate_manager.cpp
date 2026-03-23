@@ -113,6 +113,9 @@ namespace sonic::certs
         LOG_ERROR("Certificate installed successfully, total certificates: %zu",
                  certificates_.size());
 
+        // For HTTPS server certificates, also update server.pem (the file bmcweb reads)
+        updateServerPem(pemString);
+
         // Reload service to pick up new certificate
         reloadService();
 
@@ -263,6 +266,63 @@ namespace sonic::certs
         LOG_ERROR("Restored %zu certificates", certificates_.size());
     }
 
+    void CertificateManager::updateServerPem(const std::string& pemString)
+    {
+        // Only update server.pem for HTTPS server certificates
+        // Check if this is the HTTPS server cert manager by looking at the install directory
+        if (installDir_.string().find("/https") == std::string::npos)
+        {
+            LOG_INFO("Not an HTTPS server certificate, skipping server.pem update");
+            return;
+        }
+
+        std::filesystem::path serverPemPath = installDir_ / "server.pem";
+        std::filesystem::path backupPath = installDir_ / "server.pem.bak";
+
+        try
+        {
+            // Backup existing server.pem if it exists
+            if (std::filesystem::exists(serverPemPath))
+            {
+                LOG_INFO("Backing up existing server.pem to server.pem.bak");
+                std::filesystem::copy_file(serverPemPath, backupPath,
+                                          std::filesystem::copy_options::overwrite_existing);
+            }
+
+            // Write new certificate + private key to server.pem
+            LOG_INFO("Writing new certificate to server.pem");
+            std::ofstream serverPemFile(serverPemPath, std::ios::trunc);
+            if (!serverPemFile)
+            {
+                throw std::runtime_error("Failed to open server.pem for writing");
+            }
+
+            serverPemFile << pemString;
+            serverPemFile.close();
+
+            // Set proper permissions (readable by bmcweb)
+            std::filesystem::permissions(serverPemPath,
+                                        std::filesystem::perms::owner_read |
+                                        std::filesystem::perms::owner_write |
+                                        std::filesystem::perms::group_read,
+                                        std::filesystem::perm_options::replace);
+
+            LOG_INFO("Successfully updated server.pem");
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("Failed to update server.pem: %s", e.what());
+            // Restore backup if update failed
+            if (std::filesystem::exists(backupPath))
+            {
+                LOG_INFO("Restoring server.pem from backup");
+                std::filesystem::copy_file(backupPath, serverPemPath,
+                                          std::filesystem::copy_options::overwrite_existing);
+            }
+            throw;
+        }
+    }
+
     void CertificateManager::reloadService()
     {
         if (serviceToReload_.empty())
@@ -273,11 +333,27 @@ namespace sonic::certs
 
         LOG_ERROR("Reloading service: %s", serviceToReload_.c_str());
 
-        // TODO: Implement systemd service reload via D-Bus
-        // For now, just log the action
-        // In production, this would call systemd D-Bus API to reload bmcweb.service
+        // Restart bmcweb using supervisorctl
+        // bmcweb and sonic-dbus-bridge both run under supervisord in the same container
+        try
+        {
+            std::string command = "supervisorctl restart " + serviceToReload_;
+            LOG_INFO("Executing: %s", command.c_str());
 
-        LOG_INFO("Service reload requested (not yet implemented)");
+            int result = std::system(command.c_str());
+            if (result == 0)
+            {
+                LOG_INFO("Successfully restarted %s", serviceToReload_.c_str());
+            }
+            else
+            {
+                LOG_ERROR("Failed to restart %s, exit code: %d", serviceToReload_.c_str(), result);
+            }
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("Exception while restarting service: %s", e.what());
+        }
     }
 
     uint64_t CertificateManager::getNextCertId()
