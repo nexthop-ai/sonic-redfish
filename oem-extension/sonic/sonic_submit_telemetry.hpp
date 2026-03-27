@@ -7,7 +7,8 @@
 #include "error_messages.hpp"
 #include "http_request.hpp"
 #include "logging.hpp"
-#include "redfish.hpp"
+#include "query.hpp"
+#include "registries/privilege_registry.hpp"
 #include "utils/json_utils.hpp"
 
 #include <nlohmann/json.hpp>
@@ -37,10 +38,15 @@ namespace redfish
  *   }
  */
 inline void handleSonicSubmitTelemetry(
-    const crow::Request& req,
+    App& app, const crow::Request& req,
     const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
     const std::string& managerId)
 {
+    if (!redfish::setUpRedfishRoute(app, req, asyncResp))
+    {
+        return;
+    }
+
     if (managerId != BMCWEB_REDFISH_MANAGER_URI_NAME)
     {
         messages::resourceNotFound(asyncResp->res, "Manager", managerId);
@@ -60,7 +66,6 @@ inline void handleSonicSubmitTelemetry(
             inletLiquidPressureKPa, "LeakDetected", leakDetected, "Timestamp",
             timestamp))
     {
-        // readJsonAction already set the error response
         return;
     }
 
@@ -84,11 +89,14 @@ inline void handleSonicSubmitTelemetry(
     messages::success(asyncResp->res);
 }
 
-inline void requestRoutesSonicSubmitTelemetry(RedfishService& service)
+inline void requestRoutesSonicSubmitTelemetry(App& app)
 {
-    REDFISH_SUB_ROUTE<
-        "/redfish/v1/Managers/<str>/#/Oem/SONiC/RackManagerInterface/Actions/SONiC.SubmitTelemetry">(
-        service, HttpVerb::Post)(handleSonicSubmitTelemetry);
+    BMCWEB_ROUTE(
+        app,
+        "/redfish/v1/Managers/<str>/Oem/SONiC/RackManagerInterface/Actions/SONiC.SubmitTelemetry/")
+        .privileges(redfish::privileges::postManager)
+        .methods(boost::beast::http::verb::post)(
+            std::bind_front(handleSonicSubmitTelemetry, std::ref(app)));
 }
 
 } // namespace redfish

@@ -13,7 +13,7 @@ into the bmcweb build and route registration:
  * schema/oem/meson.build: add sonic subdirectory for OEM schema installation
 
 Routes added:
- - GET  /redfish/v1/Managers/Bmc/Oem/SONiC/RackManagerInterface
+ - GET  /redfish/v1/Managers/Bmc/Oem/SONiC/RackManagerInterface (OEM sub-route)
  - POST /redfish/v1/Managers/Bmc/Oem/SONiC/RackManagerInterface/Actions/SONiC.SubmitAlert
  - POST /redfish/v1/Managers/Bmc/Oem/SONiC/RackManagerInterface/Actions/SONiC.SubmitTelemetry
 ---
@@ -44,7 +44,7 @@ index abcdef2..1234568 100644
 
      requestRoutesOpenBmcManager(*this);
 
-+    requestRoutesSonicOem(*this);
++    requestRoutesSonicOem(app, *this);
 +
      validate();
  }

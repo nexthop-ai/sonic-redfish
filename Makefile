@@ -150,6 +150,16 @@ copy-oem-extension: setup-bmcweb
 	@cp $(OEM_EXT_DIR)/schema/meson.build $(BMCWEB_DIR)/redfish-core/schema/oem/sonic/
 	@echo "  OEM extension files copied"
 
+	@# Ensure stdexec.wrap exists in bmcweb subprojects.
+	@# sdbusplus depends on stdexec but bmcweb does not ship a top-level wrap
+	@# for it. Without this, meson cannot resolve the nested subproject dependency
+	@# when building from a clean tree.
+	@if [ ! -f "$(BMCWEB_DIR)/subprojects/stdexec.wrap" ]; then \
+		echo "  Adding missing stdexec.wrap to bmcweb subprojects..."; \
+		printf '[wrap-git]\nurl = https://github.com/NVIDIA/stdexec.git\nrevision = main\ndepth = 1\n\n[provide]\nstdexec = stdexec_dep\n' \
+			> $(BMCWEB_DIR)/subprojects/stdexec.wrap; \
+	fi
+
 # Copy patches to debian/ directory
 copy-patches: $(SERIES_FILE)
 	@echo "Copying patches to debian/ directory ..."
@@ -272,7 +282,7 @@ build-bridge: clean
 	@ls -lh $(TARGET_DIR)/sonic-dbus-bridge* 2>/dev/null || echo "  No artifacts found"
 
 # Build bmcweb natively (inside Docker container, no nested Docker)
-build-bmcweb-native:
+build-bmcweb-native: setup-bmcweb copy-oem-extension apply-patches
 	@echo "========================================="
 	@echo "Building bmcweb Debian package (native)"
 	@echo "========================================="

@@ -2,11 +2,9 @@
 // SPDX-FileCopyrightText: Copyright SONiC Contributors
 #pragma once
 
-#include "app.hpp"
 #include "async_resp.hpp"
-#include "error_messages.hpp"
-#include "http_request.hpp"
 #include "redfish.hpp"
+#include "sub_request.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -23,7 +21,7 @@ namespace redfish
  * the available actions that a rack manager can invoke on this BMC.
  */
 inline void handleGetSonicRackManager(
-    const crow::Request& /*req*/,
+    const SubRequest& /*req*/,
     const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
     const std::string& managerId)
 {
@@ -48,16 +46,10 @@ inline void handleGetSonicRackManager(
     actions["#SONiC.SubmitAlert"]["target"] =
         "/redfish/v1/Managers/" + std::string(BMCWEB_REDFISH_MANAGER_URI_NAME) +
         "/Oem/SONiC/RackManagerInterface/Actions/SONiC.SubmitAlert";
-    actions["#SONiC.SubmitAlert"]["@Redfish.ActionInfo"] =
-        "/redfish/v1/Managers/" + std::string(BMCWEB_REDFISH_MANAGER_URI_NAME) +
-        "/Oem/SONiC/RackManagerInterface/SubmitAlertActionInfo";
 
     actions["#SONiC.SubmitTelemetry"]["target"] =
         "/redfish/v1/Managers/" + std::string(BMCWEB_REDFISH_MANAGER_URI_NAME) +
         "/Oem/SONiC/RackManagerInterface/Actions/SONiC.SubmitTelemetry";
-    actions["#SONiC.SubmitTelemetry"]["@Redfish.ActionInfo"] =
-        "/redfish/v1/Managers/" + std::string(BMCWEB_REDFISH_MANAGER_URI_NAME) +
-        "/Oem/SONiC/RackManagerInterface/SubmitTelemetryActionInfo";
 }
 
 inline void requestRoutesSonicRackManager(RedfishService& service)

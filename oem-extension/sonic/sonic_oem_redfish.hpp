@@ -16,12 +16,15 @@ namespace redfish
  * To add a new OEM API:
  *   1. Create a new header in sonic/
  *   2. Add #include and call its requestRoutes function here.
+ *
+ * @param app     Crow application for registering standalone action routes
+ * @param service RedfishService for registering OEM sub-routes (fragments)
  */
-inline void requestRoutesSonicOem(RedfishService& service)
+inline void requestRoutesSonicOem(App& app, RedfishService& service)
 {
     requestRoutesSonicRackManager(service);
-    requestRoutesSonicSubmitAlert(service);
-    requestRoutesSonicSubmitTelemetry(service);
+    requestRoutesSonicSubmitAlert(app);
+    requestRoutesSonicSubmitTelemetry(app);
 }
 
 } // namespace redfish
