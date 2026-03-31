@@ -3,6 +3,7 @@
 ## Table of Content
 
 1. [Revision](#1-revision)
+   1. [Related documents](#11-related-documents)
 2. [Scope](#2-scope)
    1. [Supported Redfish API Endpoints](#21-supported-redfish-api-endpoints)
 3. [Definitions / Abbreviations](#3-definitions--abbreviations)
@@ -54,12 +55,24 @@
 | Version | Date        | Author      | Description                               |
 | --------- | ------------- | ------------- | ------------------------------------------- |
 | 0.1     | 10-Mar-2026 | Chinmoy Dey | Initial design document for sonic-redfish |
+| | |
+
+### 1.1 Related documents
+
+
+| Document Name                                | Link                                                                                                     |
+| :--------------------------------------------- | :--------------------------------------------------------------------------------------------------------- |
+| SONiC-BMC-OS HLD                             | [https://github.com/sonic-net/SONiC/pull/2043](https://github.com/sonic-net/SONiC/pull/2043)             |
+| sonic-redfish HLD                            | [https://github.com/sonic-net/sonic-redfish/pull/2](https://github.com/sonic-net/sonic-redfish/pull/2)   |
+| SONiC BMC Redfish API and D-Bus test plan    | [https://github.com/sonic-net/sonic-mgmt/pull/23346](https://github.com/sonic-net/sonic-mgmt/pull/23346) |
+| SONiC BMC platform management and monitoring | [https://github.com/sonic-net/SONiC/pull/2215](https://github.com/sonic-net/SONiC/pull/2215)             |
+| | |
 
 ## 2. Scope
 
 `sonic-redfish` runs on the **BMC** side and exposes BMC information such as SONiC inventory, host state, and related data through **OpenBMC-compatible D-Bus objects**. This allows **openbmc/bmcweb** (a Redfish server, alignment with DMTF specifications) to serve **Redfish APIs** without requiring a full OpenBMC stack on the BMC.
 
-The primary goal behind `sonic-redfish` is to provide an **OpenBMC like environment** , enabling OpenBMC compatible services(ie. bmcweb) to operate seamlessly within **SONiC on the BMC**. 
+The primary goal behind `sonic-redfish` is to provide an **OpenBMC like environment** , enabling OpenBMC compatible services(ie. bmcweb) to operate seamlessly within **SONiC on the BMC**.
 
 The initial scope covers:
 
@@ -94,11 +107,9 @@ The following Redfish API endpoints will be supported (in v0.1) for Rack Manager
   - **Purpose**: System reset and power control operations
   - **Use Case**: Rack Manager controls power state of Main_cpu_switch_board
   - **Supported Reset Types**:
-    - `On` - Power on the system
+    - `ForceOn` - Power on the system
     - `ForceOff` - Immediate power off
-    - `GracefulShutdown` - Orderly shutdown
-    - `GracefulRestart` - Orderly restart
-    - `ForceRestart` - Immediate restart
+    - `PowerCycle` - Immediate restart
 
 #### Alert Management
 
@@ -138,10 +149,10 @@ The following Redfish API endpoints will be supported (in v0.1) for Rack Manager
 #### Security & Certificate Management
 
 - **Certificate Installation**
-  - **Note**: Certificate management may be handled by ACMS (Automated Certificate Management Service)
+  - **Note**: Certificate management may be handled by ACMS (Automated Certificate Management Service) and details are not part of this document.
   - **Endpoints** (TBD) :
-    - `POST /redfish/v1/CertificateService/Actions/CertificateService.ReplaceCertificate`
-    - `POST /redfish/v1/Managers/Bmc/NetworkProtocol/HTTPS/Certificates`
+    - `GET /redfish/v1/CertificateService/Actions/CertificateService.ReplaceCertificate`
+    - `GET /redfish/v1/Managers/Bmc/NetworkProtocol/HTTPS/Certificates`
   - **Use Case**: Secure communication between Rack Manager and BMC
   - **Status**: Implementation details TBD based on certificate management strategy
 
@@ -167,7 +178,6 @@ A separate implementation of a standard **Redfish server** is not required, as t
 bmcweb retrieves system data through **systemd `dbus-daemon`**, sourcing information from **[OpenBMC-compliant D-Bus objects](https://github.com/openbmc/phosphor-dbus-interfaces/tree/master/yaml/xyz/openbmc_project)**. These D-Bus paths are normally created by **[OpenBMC phosphor-* services](https://github.com/orgs/openbmc/repositories?q=phosphor)**, which are not currently present in SONiC.
 
 > The `sonic-redfish` design addresses this gap by reusing the **bmcweb** codebase from a public repository and introducing a `sonic-dbus-bridge` service to expose the required`OpenBMC-compatible D-Bus` objects.
-
 
 The motivations for introducing `sonic-dbus-bridge` cab be listed as follows :-
 
@@ -216,7 +226,6 @@ At a high level, `sonic-dbus-bridge`:
 ## 6. Architecture Design
 
 ### 6.1 Deployment in SONiC / BMC Environment
-
 
 - **Redis** serves as the primary data source and command channel, accessed via the hiredis library for both synchronous queries and asynchronous event subscriptions.
 - **D-Bus system bus** (via sdbusplus) provides the IPC mechanism for exposing inventory and state to bmcweb and other management clients.
@@ -308,7 +317,6 @@ The `sonic-dbus-bridge `architecture consists of the following key components:
 ### 7.1 Module Responsibilities and High-Level Design
 
 The `sonic-dbus-bridge` is organized into distinct functional blocks, each with clear responsibilities:
-
 
 ![Layered architecture](./images/D-Bus-brodge-components.png)
 
@@ -426,7 +434,7 @@ Memory usage is dominated by Redis connection contexts, the in-memory InventoryM
 
 ## 9. Restrictions / Limitations
 
-- Only minimal inventory and host power control are implemented so far, ensors, fans, PSUs and logs are not yet exposed.
+- Only minimal inventory and host power control are implemented so far, sensors, fans, PSUs and logs are not yet exposed.
 - `SWITCH_HOST_STATE` notifications are logged but not yet mapped to D-Bus.
 - Assumes a reachable SONiC Redis instance with standard DB indices (4 and 6).
 
@@ -440,8 +448,10 @@ Memory usage is dominated by Redis connection contexts, the in-memory InventoryM
 
 ## 11. Testing Requirements / Design
 
-- Unit tests for InventoryModelBuilder, Redis adapters, UpdateEngine and StateManager.
-- System tests that validate Redis-to-D-Bus propagation and host transition flows.
+* Unit tests for InventoryModelBuilder, Redis adapters, UpdateEngine and StateManager.
+* System tests that validate Redis-to-D-Bus propagation and host transition flows.
+
+`NOTE` : [Test Plan](https://github.com/sonic-net/sonic-mgmt/pull/23346)
 
 [Startup]: ./images/Startup.png
 [DataFetch1]: ./images/DataFetch1.png
