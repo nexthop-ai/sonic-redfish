@@ -22,6 +22,7 @@ PATCHES_DIR := $(REPO_ROOT)/patches
 SCRIPTS_DIR := $(REPO_ROOT)/scripts
 BUILD_DIR := $(REPO_ROOT)/build
 TARGET_DIR := $(REPO_ROOT)/$(SONIC_REDFISH_TARGET)
+RMC_EVENTS_DIR := $(REPO_ROOT)/rmc-events
 SERIES_FILE := $(PATCHES_DIR)/series
 DEBIAN_DIR := $(BMCWEB_DIR)/debian
 
@@ -37,7 +38,7 @@ DOCKERFILE_BUILD := $(BUILD_DIR)/Dockerfile.build
 MAIN_TARGET := $(BMCWEB_BINARY)
 DERIVED_TARGETS := $(BRIDGE_BINARY)
 
-.PHONY: all build clean reset setup-bmcweb copy-patches apply-patches build-bmcweb build-bridge build-bmcweb-native build-bridge-native build-in-docker help
+.PHONY: all build clean reset setup-bmcweb copy-patches copy-rmc-events apply-patches build-bmcweb build-bridge build-bmcweb-native build-bridge-native build-in-docker help
 
 # Default target - Build both components (via Docker)
 all: build
@@ -145,8 +146,32 @@ copy-patches: $(SERIES_FILE)
 	@# Note: Patches will create debian/ directory, so we only copy series file after patches are applied
 	@echo "  Patches will be applied from $(PATCHES_DIR)"
 
+# Copy rmc-events source files into bmcweb tree before patches are applied.
+# The integration patch (0003) wires these files into the bmcweb build but
+# does not contain the file contents -- they live in rmc-events/.
+copy-rmc-events: setup-bmcweb
+	@echo "Copying rmc-events sources into bmcweb tree..."
+	@if [ -d "$(RMC_EVENTS_DIR)" ]; then \
+		cp -v $(RMC_EVENTS_DIR)/lib/*.hpp $(BMCWEB_DIR)/redfish-core/lib/ 2>/dev/null || true; \
+		cp -v $(RMC_EVENTS_DIR)/include/*.hpp $(BMCWEB_DIR)/redfish-core/include/ 2>/dev/null || true; \
+		cp -v $(RMC_EVENTS_DIR)/src/*.cpp $(BMCWEB_DIR)/redfish-core/src/ 2>/dev/null || true; \
+		echo "  rmc-events files copied"; \
+	else \
+		echo "  No rmc-events directory found, skipping"; \
+	fi
+
+# Copy stdexec.wrap into sdbusplus subprojects after meson fetches it
+# This is needed because sdbusplus from git doesn't have our stdexec.wrap redirect
+fix-sdbusplus-stdexec:
+	@if [ -d "$(BMCWEB_DIR)/subprojects/sdbusplus" ] && [ ! -f "$(BMCWEB_DIR)/subprojects/sdbusplus/subprojects/stdexec.wrap" ]; then \
+		echo "Copying stdexec.wrap to sdbusplus/subprojects/..."; \
+		mkdir -p $(BMCWEB_DIR)/subprojects/sdbusplus/subprojects; \
+		cp $(BMCWEB_DIR)/subprojects/stdexec.wrap $(BMCWEB_DIR)/subprojects/sdbusplus/subprojects/ || true; \
+		echo "  stdexec.wrap copied"; \
+	fi
+
 # Apply patches using series file
-apply-patches: setup-bmcweb
+apply-patches: setup-bmcweb copy-rmc-events
 	@echo "Applying patches from series file..."
 	@if [ ! -d "$(BMCWEB_DIR)" ]; then \
 		echo "Error: bmcweb directory not found"; \
@@ -261,7 +286,7 @@ build-bridge: clean
 	@ls -lh $(TARGET_DIR)/sonic-dbus-bridge* 2>/dev/null || echo "  No artifacts found"
 
 # Build bmcweb natively (inside Docker container, no nested Docker)
-build-bmcweb-native:
+build-bmcweb-native: fix-sdbusplus-stdexec
 	@echo "========================================="
 	@echo "Building bmcweb Debian package (native)"
 	@echo "========================================="
@@ -374,6 +399,7 @@ clean:
 	@echo "  Removed package artifacts from root directory"
 
 	# Reset bmcweb source to clean state (so patches can be reapplied)
+	# git clean -fd also removes rmc-events copies (untracked files)
 	@echo "Resetting bmcweb source to clean state..."
 	@if [ -d "$(BMCWEB_DIR)/.git" ]; then \
 		cd $(BMCWEB_DIR) && git reset --hard HEAD 2>/dev/null || true; \
