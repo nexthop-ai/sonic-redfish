@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: shreyansh-nexthop <shreyansh@nexthop.ai>
+Date: Tue, 17 Mar 2026 18:30:00 +0000
+Subject: [PATCH] Add Product field to Redfish service root
+
+Add "Product": "SONiCBMC" field to the /redfish/v1 service root response
+to identify the BMC product name.
+
+This helps clients identify that they are connecting to a SONiC BMC
+implementation.
+---
+ redfish-core/lib/service_root.hpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/redfish-core/lib/service_root.hpp b/redfish-core/lib/service_root.hpp
+index 00000000..11111111 100644
+--- a/redfish-core/lib/service_root.hpp
++++ b/redfish-core/lib/service_root.hpp
+@@ -52,6 +52,7 @@ inline void handleServiceRootGetImpl(
+     asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1";
+     asyncResp->res.jsonValue["Id"] = "RootService";
+     asyncResp->res.jsonValue["Name"] = "Root Service";
++    asyncResp->res.jsonValue["Product"] = "SONiCBMC";
+     asyncResp->res.jsonValue["RedfishVersion"] = "1.17.0";
+     asyncResp->res.jsonValue["Links"]["Sessions"]["@odata.id"] =
+         "/redfish/v1/SessionService/Sessions";
+-- 
+2.34.1
+
