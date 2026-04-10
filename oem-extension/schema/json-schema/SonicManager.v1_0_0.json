@@ -1,7 +1,7 @@
 {
     "$id": "https://github.com/sonic-net/sonic-redfish/tree/master/oem-extension/schema/json-schema/SonicManager.v1_0_0.json",
     "$schema": "http://redfish.dmtf.org/schemas/v1/redfish-schema-v1.json",
-    "copyright": "Copyright 2025 SONiC Contributors.",
+    "copyright": "Copyright 2026 SONiC Contributors.",
     "definitions": {
         "RackManagerInterface": {
             "additionalProperties": false,
@@ -43,8 +43,8 @@
         },
         "SubmitAlert": {
             "additionalProperties": false,
-            "description": "Rack manager posts a critical alert to the switch BMC.",
-            "longDescription": "This action allows a rack manager to submit a critical alert to the switch BMC for logging and event propagation.",
+            "description": "Rack manager posts alert data to the switch BMC.",
+            "longDescription": "This action allows a rack manager to submit structured alert data to the switch BMC.  The body contains a redfish_alert_data object whose keys are alert type names (e.g. FlowRateDeviation, LeakDetected).  Each alert carries fields appropriate to its type plus a Severity and RscmPosition.",
             "properties": {
                 "target": {
                     "description": "Link to invoke action.",
@@ -62,44 +62,42 @@
             "additionalProperties": false,
             "description": "Request body for SONiC.SubmitAlert action.",
             "properties": {
-                "AlertType": {
-                    "description": "The type of alert (e.g., HighTemperature, LeakDetected, PowerFailure).",
-                    "type": "string"
-                },
-                "Severity": {
-                    "description": "The severity level of the alert.",
-                    "enum": [
-                        "Critical",
-                        "Warning",
-                        "OK"
-                    ],
-                    "type": "string"
-                },
-                "Message": {
-                    "description": "Human-readable alert message describing the condition.",
-                    "type": "string"
-                },
-                "OriginatorId": {
-                    "description": "Optional identifier of the originating rack manager.",
-                    "type": "string"
-                },
-                "Timestamp": {
-                    "description": "Optional ISO 8601 timestamp of when the alert was generated.",
-                    "format": "date-time",
-                    "type": "string"
+                "redfish_alert_data": {
+                    "description": "Container for alert entries keyed by alert type.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/AlertEntry"
+                    }
                 }
             },
             "required": [
-                "AlertType",
-                "Severity",
-                "Message"
+                "redfish_alert_data"
             ],
             "type": "object"
         },
+        "AlertEntry": {
+            "description": "A single alert entry.  Fields vary by alert type; Severity and RscmPosition are always present.",
+            "type": "object",
+            "properties": {
+                "Severity": {
+                    "description": "Severity of the alert condition.",
+                    "type": "string"
+                },
+                "RscmPosition": {
+                    "description": "RSCM position identifier.",
+                    "type": "integer"
+                }
+            },
+            "additionalProperties": true,
+            "required": [
+                "Severity",
+                "RscmPosition"
+            ]
+        },
         "SubmitTelemetry": {
             "additionalProperties": false,
-            "description": "Rack manager sends periodic telemetry data to the switch BMC.",
-            "longDescription": "This action allows a rack manager to submit periodic telemetry data including inlet liquid temperature, flow rate, pressure, and leak detection status.",
+            "description": "Rack manager sends periodic telemetry / alarm data to the switch BMC.",
+            "longDescription": "This action allows a rack manager to submit telemetry data.  The body contains an Alarms object with sensor status flags, deviation sub-objects, leak detection, and general parameters.",
             "properties": {
                 "target": {
                     "description": "Link to invoke action.",
@@ -117,36 +115,89 @@
             "additionalProperties": false,
             "description": "Request body for SONiC.SubmitTelemetry action.",
             "properties": {
-                "InletLiquidTemperatureCelsius": {
-                    "description": "Inlet liquid temperature in degrees Celsius.",
-                    "type": "number",
-                    "units": "Cel"
-                },
-                "InletLiquidFlowRateLPM": {
-                    "description": "Inlet liquid flow rate in liters per minute.",
-                    "type": "number",
-                    "units": "L/min"
-                },
-                "InletLiquidPressureKPa": {
-                    "description": "Inlet liquid pressure in kilopascals.",
-                    "type": "number",
-                    "units": "kPa"
-                },
-                "LeakDetected": {
-                    "description": "Whether a liquid leak has been detected.",
-                    "type": "boolean"
-                },
-                "Timestamp": {
-                    "description": "Optional ISO 8601 timestamp of when the telemetry was sampled.",
-                    "format": "date-time",
-                    "type": "string"
+                "Alarms": {
+                    "description": "Container for alarm and sensor telemetry data.",
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                        "EnergyValveActive": {
+                            "description": "Whether the energy valve is active.",
+                            "type": "boolean"
+                        },
+                        "EnergyValvePresent": {
+                            "description": "Whether the energy valve is present.",
+                            "type": "boolean"
+                        },
+                        "FlowrateSensorActive": {
+                            "description": "Whether the flow-rate sensor is active.",
+                            "type": "boolean"
+                        },
+                        "PressureSensorActive": {
+                            "description": "Whether the pressure sensor is active.",
+                            "type": "boolean"
+                        },
+                        "TemperatureSensorActive": {
+                            "description": "Whether the temperature sensor is active.",
+                            "type": "boolean"
+                        },
+                        "InletTempDeviation": {
+                            "description": "Inlet temperature deviation data.",
+                            "type": "object",
+                            "properties": {
+                                "InletTemperature": { "type": "number" },
+                                "Severity": { "type": "string" }
+                            }
+                        },
+                        "FlowRateDeviation": {
+                            "description": "Flow-rate deviation data.",
+                            "type": "object",
+                            "properties": {
+                                "FlowRate": { "type": "number" },
+                                "Severity": { "type": "string" }
+                            }
+                        },
+                        "LiquidPressureDeviation": {
+                            "description": "Liquid pressure deviation data.",
+                            "type": "object",
+                            "properties": {
+                                "LiquidPressure": { "type": "number" },
+                                "Severity": { "type": "string" }
+                            }
+                        },
+                        "LeakDetected": {
+                            "description": "Leak detection data.",
+                            "type": "object",
+                            "properties": {
+                                "LeakDetected": { "type": "boolean" },
+                                "LeakRopeBreak": { "type": "boolean" },
+                                "Severity": { "type": "string" }
+                            }
+                        },
+                        "ThresholdConfigVersion": {
+                            "description": "Threshold configuration version string.",
+                            "type": "string"
+                        },
+                        "GlycolConcentration": {
+                            "description": "Glycol concentration value.",
+                            "type": "number"
+                        },
+                        "ErrorState": {
+                            "description": "Error state code.",
+                            "type": "string"
+                        },
+                        "RscmPosition": {
+                            "description": "RSCM position identifier.",
+                            "type": "integer"
+                        },
+                        "ConfigFileCorrupted": {
+                            "description": "Whether the configuration file is corrupted.",
+                            "type": "boolean"
+                        }
+                    }
                 }
             },
             "required": [
-                "InletLiquidTemperatureCelsius",
-                "InletLiquidFlowRateLPM",
-                "InletLiquidPressureKPa",
-                "LeakDetected"
+                "Alarms"
             ],
             "type": "object"
         }

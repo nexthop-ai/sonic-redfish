@@ -4,37 +4,45 @@
 
 #include "app.hpp"
 #include "async_resp.hpp"
+#include "dbus_singleton.hpp"
 #include "error_messages.hpp"
 #include "http_request.hpp"
 #include "logging.hpp"
 #include "query.hpp"
 #include "registries/privilege_registry.hpp"
-#include "utils/json_utils.hpp"
 
 #include <nlohmann/json.hpp>
 
 #include <memory>
-#include <optional>
 #include <string>
 
 namespace redfish
 {
 
+// D-Bus coordinates for the sonic-dbus-bridge rack manager receiver
+constexpr const char* telemetryDbusService =
+    "xyz.openbmc_project.Inventory.Manager";
+constexpr const char* telemetryDbusObject =
+    "/xyz/openbmc_project/sonic/rack_manager";
+constexpr const char* telemetryDbusInterface = "com.sonic.RackManager";
+
 /**
  * @brief Handle POST .../Actions/SONiC.SubmitTelemetry
  *
- * Rack manager sends periodic telemetry data to the switch BMC:
- *   - Inlet liquid temperature (Celsius)
- *   - Inlet liquid flow rate (liters per minute)
- *   - Inlet liquid pressure (kPa)
- *   - Leak detection status
+ * Accepts the rack manager telemetry JSON and forwards it as-is to
+ * sonic-dbus-bridge via D-Bus.  The bridge uses a declarative
+ * field-mapping table to persist the data in Redis STATE_DB.
  *
- * Request body:
+ * Request body example:
  *   {
- *     "InletLiquidTemperatureCelsius": 28.5,
- *     "InletLiquidFlowRateLPM": 12.3,
- *     "InletLiquidPressureKPa": 150.0,
- *     "LeakDetected": false
+ *     "Alarms": {
+ *       "EnergyValveActive": true,
+ *       "InletTempDeviation": {
+ *         "InletTemperature": 16.87,
+ *         "Severity": "Normal"
+ *       },
+ *       ...
+ *     }
  *   }
  */
 inline void handleSonicSubmitTelemetry(
@@ -53,40 +61,48 @@ inline void handleSonicSubmitTelemetry(
         return;
     }
 
-    double inletLiquidTemperatureCelsius = 0.0;
-    double inletLiquidFlowRateLPM = 0.0;
-    double inletLiquidPressureKPa = 0.0;
-    bool leakDetected = false;
-    std::optional<std::string> timestamp;
-
-    if (!json_util::readJsonAction(
-            req, asyncResp->res, "InletLiquidTemperatureCelsius",
-            inletLiquidTemperatureCelsius, "InletLiquidFlowRateLPM",
-            inletLiquidFlowRateLPM, "InletLiquidPressureKPa",
-            inletLiquidPressureKPa, "LeakDetected", leakDetected, "Timestamp",
-            timestamp))
+    // Validate that the body is valid JSON
+    nlohmann::json reqJson =
+        nlohmann::json::parse(req.body(), nullptr, false);
+    if (reqJson.is_discarded())
     {
+        messages::malformedJSON(asyncResp->res);
         return;
     }
 
-    BMCWEB_LOG_INFO(
-        "SONiC.SubmitTelemetry: Temp={}C, Flow={}LPM, Pressure={}kPa, Leak={}",
-        inletLiquidTemperatureCelsius, inletLiquidFlowRateLPM,
-        inletLiquidPressureKPa, leakDetected);
+    // Require the top-level key
+    if (!reqJson.contains("Alarms"))
+    {
+        messages::propertyMissing(asyncResp->res, "Alarms");
+        return;
+    }
 
-    // TODO: Forward telemetry data to D-Bus service (e.g., sonic-dbus-bridge)
-    // for sensor value updates and threshold monitoring.
-    //
-    // Example D-Bus calls:
-    //   Set xyz.openbmc_project.Sensor.Value on inlet temperature sensor
-    //   Set xyz.openbmc_project.Sensor.Value on flow rate sensor
-    //   Set xyz.openbmc_project.Sensor.Value on pressure sensor
-    //   Set leak detection state on leak detector object
-    //
-    // If leakDetected is true, the BMC can generate a Redfish event
-    // to notify subscribed clients (e.g., the rack manager itself).
+    std::string jsonStr = reqJson.dump();
 
-    messages::success(asyncResp->res);
+    BMCWEB_LOG_INFO("SONiC.SubmitTelemetry: forwarding {} bytes to D-Bus",
+                    jsonStr.size());
+
+    // Forward the raw JSON to sonic-dbus-bridge
+    crow::connections::systemBus->async_method_call(
+        [asyncResp](const boost::system::error_code& ec, bool success) {
+            if (ec)
+            {
+                BMCWEB_LOG_ERROR("SubmitTelemetry D-Bus error: {}",
+                                 ec.message());
+                messages::internalError(asyncResp->res);
+                return;
+            }
+            if (!success)
+            {
+                BMCWEB_LOG_WARNING(
+                    "SubmitTelemetry: bridge returned failure");
+                messages::internalError(asyncResp->res);
+                return;
+            }
+            messages::success(asyncResp->res);
+        },
+        telemetryDbusService, telemetryDbusObject, telemetryDbusInterface,
+        "SubmitTelemetry", jsonStr);
 }
 
 inline void requestRoutesSonicSubmitTelemetry(App& app)

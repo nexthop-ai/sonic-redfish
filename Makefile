@@ -115,7 +115,7 @@ build: $(DOCKERFILE_BUILD)
 
 # Build inside Docker (called from Docker container)
 # Note: sdbusplus is pre-installed in the Docker image
-build-in-docker: setup-bmcweb copy-oem-extension apply-patches build-bridge-native build-bmcweb-native
+build-in-docker: clean setup-bmcweb copy-oem-extension apply-patches build-bridge-native build-bmcweb-native
 	@echo "  Build inside Docker completed"
 
 # Setup bmcweb source
@@ -364,35 +364,38 @@ endif
 $(addprefix $(DEST)/, $(BMCWEB_DBG)): $(DEST)/% : $(DEST)/$(BMCWEB)
 
 # Clean build artifacts
+# Clean - Remove build artifacts (obj dirs, debs, logs) and reset bmcweb to clean state
 clean:
 	@echo "========================================="
 	@echo "Cleaning build artifacts..."
 	@echo "========================================="
 	@echo ""
 
-	# Clean root-owned files (from Docker builds) using sudo
-	@echo "Cleaning build directories..."
-	@if [ -d "$(BMCWEB_DIR)/obj-"* ] || [ -d "$(BMCWEB_DIR)/subprojects" ]; then \
-		echo "  Removing bmcweb build artifacts (may require sudo)..."; \
-		sudo rm -rf $(BMCWEB_DIR)/obj-* 2>/dev/null || true; \
-		if [ -d "$(BMCWEB_DIR)/subprojects" ]; then \
-			find $(BMCWEB_DIR)/subprojects -mindepth 1 -maxdepth 1 -type d -exec sudo rm -rf {} + 2>/dev/null || true; \
-		fi; \
-	fi
-	@if [ -d "$(BRIDGE_DIR)/obj-"* ] || [ -d "$(BRIDGE_DIR)/subprojects" ] || [ -d "$(BRIDGE_DIR)/debian/.debhelper" ]; then \
-		echo "  Removing sonic-dbus-bridge build artifacts (may require sudo)..."; \
-		sudo rm -rf $(BRIDGE_DIR)/obj-* $(BRIDGE_DIR)/debian/.debhelper $(BRIDGE_DIR)/debian/debhelper-build-stamp $(BRIDGE_DIR)/debian/files $(BRIDGE_DIR)/debian/sonic-dbus-bridge $(BRIDGE_DIR)/debian/*.log $(BRIDGE_DIR)/debian/*.substvars 2>/dev/null || true; \
-		if [ -d "$(BRIDGE_DIR)/subprojects" ]; then \
-			find $(BRIDGE_DIR)/subprojects -mindepth 1 -maxdepth 1 -type d -exec sudo rm -rf {} + 2>/dev/null || true; \
-		fi; \
-	fi
+	# Remove bmcweb build artifacts (obj dirs, debian build state)
+	@echo "Cleaning bmcweb build artifacts..."
+	@sudo rm -rf $(BMCWEB_DIR)/obj-* 2>/dev/null || true
+	@sudo rm -rf $(BMCWEB_DIR)/debian 2>/dev/null || true
+	@echo "  bmcweb obj-* and debian/ removed"
 
-	# Clean host-owned files
+	# Remove sonic-dbus-bridge build artifacts
+	@echo "Cleaning sonic-dbus-bridge build artifacts..."
+	@sudo rm -rf $(BRIDGE_DIR)/obj-* 2>/dev/null || true
+	@sudo rm -rf $(BRIDGE_DIR)/build 2>/dev/null || true
+	@sudo rm -rf $(BRIDGE_DIR)/debian/.debhelper $(BRIDGE_DIR)/debian/debhelper-build-stamp \
+		$(BRIDGE_DIR)/debian/files $(BRIDGE_DIR)/debian/sonic-dbus-bridge \
+		$(BRIDGE_DIR)/debian/*.log $(BRIDGE_DIR)/debian/*.substvars 2>/dev/null || true
+	@echo "  sonic-dbus-bridge build artifacts removed"
+
+	# Remove .deb and packaging files from repo root
 	@echo "Cleaning package artifacts..."
-	@rm -rf $(BMCWEB_DIR)/debian 2>/dev/null || true
-	@rm -rf $(BRIDGE_DIR)/build 2>/dev/null || true
-	@rm -f $(REPO_ROOT)/*.deb $(REPO_ROOT)/*.changes $(REPO_ROOT)/*.buildinfo $(REPO_ROOT)/*.dsc $(REPO_ROOT)/*.tar.gz 2>/dev/null || true
-	@echo "  Removed package artifacts from root directory"
+	@rm -f $(REPO_ROOT)/*.deb $(REPO_ROOT)/*.changes $(REPO_ROOT)/*.buildinfo \
+		$(REPO_ROOT)/*.dsc $(REPO_ROOT)/*.tar.gz 2>/dev/null || true
+	@echo "  Package artifacts removed from root directory"
+
+	# Remove target directory (built debs)
+	@echo "Cleaning target directory..."
+	@sudo rm -rf $(TARGET_DIR) 2>/dev/null || true
+	@echo "  $(SONIC_REDFISH_TARGET) removed"
 
 	# Reset bmcweb source to clean state (so patches can be reapplied)
 	@echo "Resetting bmcweb source to clean state..."
@@ -405,33 +408,36 @@ clean:
 	@echo ""
 	@echo "Clean completed"
 
-# Reset - Complete cleanup including bmcweb source and Docker images
+# Reset - Nuke everything: all build artifacts, bmcweb directory, Docker images
 reset: clean
 	@echo ""
 	@echo "========================================="
-	@echo "Resetting workspace to clean state..."
+	@echo "Resetting workspace (full nuke)..."
 	@echo "========================================="
 	@echo ""
-	@echo "Removing Docker images..."
-	@docker rmi $(DOCKER_BUILDER_IMAGE) 2>/dev/null || echo "  (Docker image not found, skipping)"
-	@echo ""
-	@echo "Resetting bmcweb source..."
-	@if [ -d "$(BMCWEB_DIR)/.git" ]; then \
-		sudo rm -rf $(BMCWEB_DIR)/debian $(BMCWEB_DIR)/obj-* 2>/dev/null || true; \
-		cd $(BMCWEB_DIR) && git reset --hard HEAD 2>/dev/null || true; \
-		cd $(BMCWEB_DIR) && git clean -fdx 2>/dev/null || true; \
-		echo "  bmcweb source reset"; \
-	else \
-		echo "  bmcweb is not a git repository, skipping"; \
-	fi
-	@echo ""
+
+	# Remove the entire bmcweb directory (cloned source + subprojects + everything)
+	@echo "Removing bmcweb directory..."
+	@sudo rm -rf $(BMCWEB_DIR) 2>/dev/null || true
+	@echo "  bmcweb/ removed"
+
+	# Remove entire target directory tree
 	@echo "Removing target directory..."
 	@sudo rm -rf target 2>/dev/null || true
-	@echo "  Target directory removed"
+	@echo "  target/ removed"
+
+	# Remove all Docker images and containers for this project
+	@echo "Removing Docker images..."
+	@docker rm -f $$(docker ps -aq --filter ancestor=$(DOCKER_BUILDER_IMAGE)) 2>/dev/null || true
+	@docker rmi -f $(DOCKER_BUILDER_IMAGE) 2>/dev/null || echo "  ($(DOCKER_BUILDER_IMAGE) not found, skipping)"
+	@# Also remove any dangling images from failed builds
+	@docker image prune -f 2>/dev/null || true
+	@echo "  Docker images cleaned"
+
 	@echo ""
 	@echo "========================================="
-	@echo "Workspace reset complete!"
+	@echo "Workspace fully reset!"
 	@echo "========================================="
 	@echo ""
-	@echo "You can now run: make -f Makefile"
+	@echo "You can now run: make build"
 
