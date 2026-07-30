@@ -500,7 +500,7 @@ GET /redfish/v1/
     "@odata.id": "/redfish/v1/Managers"
   },
   "Name": "Root Service",
-  "Product": "SONiCBMC",
+  "Product": "SONiCBMC-aa:18:f1:e4:27:60",
   "ProtocolFeaturesSupported": {
     "DeepOperations": {
       "DeepPATCH": false,

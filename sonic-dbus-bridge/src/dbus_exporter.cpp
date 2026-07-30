@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -17,6 +18,7 @@ namespace sonic::dbus_bridge
 constexpr const char* IFACE_INVENTORY_CHASSIS = "xyz.openbmc_project.Inventory.Item.Chassis";
 constexpr const char* IFACE_INVENTORY_SYSTEM = "xyz.openbmc_project.Inventory.Item.System";
 constexpr const char* IFACE_DECORATOR_ASSET = "xyz.openbmc_project.Inventory.Decorator.Asset";
+constexpr const char* IFACE_NETWORK_INTERFACE = "xyz.openbmc_project.Inventory.Item.NetworkInterface";
 constexpr const char* IFACE_STATE_CHASSIS = "xyz.openbmc_project.State.Chassis";
 constexpr const char* IFACE_SOFTWARE_VERSION = "xyz.openbmc_project.Software.Version";
 constexpr const char* IFACE_SOFTWARE_ACTIVATION = "xyz.openbmc_project.Software.Activation";
@@ -111,6 +113,16 @@ bool DBusExporter::createChassisObject(const ChassisInfo& chassis)
         [this](const auto&) { return currentModel_.chassis.model; });
     assetIface->initialize();
     interfaces_[std::string(OBJ_PATH_CHASSIS) + ":" + IFACE_DECORATOR_ASSET] = assetIface;
+
+    // Item.NetworkInterface interface -- exposes the base MAC address (from
+    // CONFIG_DB) so consumers (e.g. bmcweb service root) can surface it.
+    auto netIface = inventoryServer_.add_interface(OBJ_PATH_CHASSIS, IFACE_NETWORK_INTERFACE);
+    netIface->register_property_r<std::string>(
+        "MACAddress", std::string(""),
+        sdbusplus::vtable::property_::const_,
+        [this](const auto&) { return currentModel_.chassis.baseMacAddress; });
+    netIface->initialize();
+    interfaces_[std::string(OBJ_PATH_CHASSIS) + ":" + IFACE_NETWORK_INTERFACE] = netIface;
 
     LOG_INFO("Created chassis object at %s", OBJ_PATH_CHASSIS);
     return true;

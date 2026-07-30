@@ -4,11 +4,15 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
 #include "inventory_model.hpp"
 #include "logger.hpp"
+
+#include <cctype>
+#include <string>
 
 namespace sonic::dbus_bridge
 {
@@ -26,6 +30,17 @@ static const char* fieldSourceToString(FieldSource source)
     }
 }
 
+// Lower-case a copy of a string. The base MAC address is stored lower-cased
+// for a stable, canonical value.
+static std::string toLowerCopy(std::string s)
+{
+    for (char& c : s)
+    {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return s;
+}
+
 InventoryModel InventoryModelBuilder::build(
     const std::optional<FruInfo>& fruInfo,
     const std::optional<DeviceMetadata>& deviceMetadata,
@@ -33,7 +48,7 @@ InventoryModel InventoryModelBuilder::build(
     const std::optional<ChassisState>& chassisState)
 {
     InventoryModel model;
-    
+
     model.chassis = buildChassisInfo(fruInfo, deviceMetadata, platformDesc);
     model.system = buildSystemInfo(fruInfo, deviceMetadata);
     model.chassisState = chassisState.value_or(ChassisState{});
@@ -132,6 +147,21 @@ ChassisInfo InventoryModelBuilder::buildChassisInfo(
         chassis.chassisType = *deviceMetadata->type;
     }
 
+    // Base MAC address: sourced from CONFIG_DB (DEVICE_METADATA.mac), stored
+    // lower-cased. If CONFIG_DB does not provide it, log an error and continue
+    // with the MAC left empty so the rest of the inventory (and the Redfish
+    // service root) is still returned.
+    if (deviceMetadata && deviceMetadata->mac && !deviceMetadata->mac->empty())
+    {
+        chassis.baseMacAddress = toLowerCopy(*deviceMetadata->mac);
+        chassis.baseMacAddressSource = FieldSource::Redis;
+    }
+    else
+    {
+        LOG_ERROR("Base MAC address unavailable from CONFIG_DB; "
+                  "leaving it empty");
+    }
+
     // Pretty name: platform.json > FRU product name > default
     if (platformDesc && !platformDesc->chassisName.empty())
     {
@@ -152,6 +182,9 @@ ChassisInfo InventoryModelBuilder::buildChassisInfo(
            chassis.manufacturer.c_str(), fieldSourceToString(chassis.manufacturerSource));
     LOG_INFO("  Model: \"%s\" (from %s)",
            chassis.model.c_str(), fieldSourceToString(chassis.modelSource));
+    LOG_INFO("  BaseMacAddress: \"%s\" (from %s)",
+           chassis.baseMacAddress.c_str(),
+           fieldSourceToString(chassis.baseMacAddressSource));
 
     return chassis;
 }
