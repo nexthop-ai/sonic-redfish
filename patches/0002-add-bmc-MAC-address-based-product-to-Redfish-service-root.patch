@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Chinmoy Dey <chinmoy@nexthop.ai>
+Date: Mon, 13 Jul 2026 00:00:00 +0000
+Subject: [PATCH] Add BMC MAC-address-based Product to Redfish service root
+
+Add a "Product" field to the /redfish/v1 service root response to identify
+the BMC product name, and fold the base MAC address into it so the value is
+"SONiCBMC-<mac>" (e.g. "SONiCBMC-aa:18:f1:e4:27:60").
+
+The base MAC address is resolved from CONFIG_DB by sonic-dbus-bridge and
+published on D-Bus on the chassis inventory object (service
+xyz.openbmc_project.Inventory.Manager, path
+/xyz/openbmc_project/inventory/system/chassis, interface
+xyz.openbmc_project.Inventory.Item.NetworkInterface, property MACAddress).
+
+The MAC read is best effort: if the bridge or the property is unavailable the
+Product field keeps its bare "SONiCBMC" value and the service root is still
+returned (200) rather than failing.
+
+This helps clients identify that they are connecting to a SONiC BMC
+implementation and which unit it is.
+---
+ redfish-core/lib/service_root.hpp | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/redfish-core/lib/service_root.hpp b/redfish-core/lib/service_root.hpp
+index a67a75de..60293522 100644
+--- a/redfish-core/lib/service_root.hpp
++++ b/redfish-core/lib/service_root.hpp
+@@ -7,7 +9,9 @@
+
+ #include "app.hpp"
+ #include "async_resp.hpp"
++#include "dbus_utility.hpp"
+ #include "http_request.hpp"
++#include "logging.hpp"
+ #include "persistent_data.hpp"
+ #include "query.hpp"
+ #include "registries/privilege_registry.hpp"
+@@ -52,6 +54,7 @@ inline void handleServiceRootGetImpl(
+     asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1";
+     asyncResp->res.jsonValue["Id"] = "RootService";
+     asyncResp->res.jsonValue["Name"] = "Root Service";
++    asyncResp->res.jsonValue["Product"] = "SONiCBMC";
+     asyncResp->res.jsonValue["RedfishVersion"] = "1.17.0";
+     asyncResp->res.jsonValue["Links"]["Sessions"]["@odata.id"] =
+         "/redfish/v1/SessionService/Sessions";
+@@ -110,6 +113,20 @@ inline void handleServiceRootGetImpl(
+     protocolFeatures["SelectQuery"] = true;
+     protocolFeatures["DeepOperations"]["DeepPOST"] = false;
+     protocolFeatures["DeepOperations"]["DeepPATCH"] = false;
++
++    dbus::utility::getProperty<std::string>(
++        "xyz.openbmc_project.Inventory.Manager",
++        "/xyz/openbmc_project/inventory/system/chassis",
++        "xyz.openbmc_project.Inventory.Item.NetworkInterface", "MACAddress",
++        [asyncResp](const boost::system::error_code& ec,
++                    const std::string& macAddress) {
++            if (ec || macAddress.empty())
++            {
++                BMCWEB_LOG_WARNING("ServiceRoot: base MAC address unavailable");
++                return;
++            }
++            asyncResp->res.jsonValue["Product"] = "SONiCBMC-" + macAddress;
++        });
+ }
+ inline void handleServiceRootGet(
+     App& app, const crow::Request& req,
+--
+2.34.1

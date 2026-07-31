@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -126,6 +127,57 @@ TEST(InventoryModelBuilder, ChassisStatePassedThrough)
         std::nullopt, std::nullopt, std::nullopt, cs);
 
     EXPECT_EQ(model.chassisState.powerState, "off");
+}
+
+// ---------------------------------------------------------------------------
+// Base MAC address: sourced from CONFIG_DB (DEVICE_METADATA.mac) only, stored
+// lower-cased; empty when CONFIG_DB does not provide it.
+// ---------------------------------------------------------------------------
+
+TEST(InventoryModelBuilder, BaseMacFromConfigDb)
+{
+    DeviceMetadata dm;
+    dm.mac = "11:22:33:44:55:66";
+
+    auto model = InventoryModelBuilder::build(
+        std::nullopt, dm, std::nullopt, std::nullopt);
+
+    EXPECT_EQ(model.chassis.baseMacAddress, "11:22:33:44:55:66");
+    EXPECT_EQ(model.chassis.baseMacAddressSource, FieldSource::Redis);
+}
+
+TEST(InventoryModelBuilder, BaseMacIsLowerCased)
+{
+    DeviceMetadata dm;
+    dm.mac = "AA:BB:CC:DD:EE:FF";
+
+    auto model = InventoryModelBuilder::build(
+        std::nullopt, dm, std::nullopt, std::nullopt);
+
+    EXPECT_EQ(model.chassis.baseMacAddress, "aa:bb:cc:dd:ee:ff");
+    EXPECT_EQ(model.chassis.baseMacAddressSource, FieldSource::Redis);
+}
+
+TEST(InventoryModelBuilder, BaseMacEmptyWhenConfigDbMissing)
+{
+    auto model = InventoryModelBuilder::build(
+        std::nullopt, std::nullopt, std::nullopt, std::nullopt);
+
+    EXPECT_TRUE(model.chassis.baseMacAddress.empty());
+    EXPECT_EQ(model.chassis.baseMacAddressSource, FieldSource::Default);
+}
+
+TEST(InventoryModelBuilder, BaseMacEmptyWhenConfigDbValueEmpty)
+{
+    // A present-but-empty CONFIG_DB value must not be used; the MAC ends empty.
+    DeviceMetadata dm;
+    dm.mac = "";
+
+    auto model = InventoryModelBuilder::build(
+        std::nullopt, dm, std::nullopt, std::nullopt);
+
+    EXPECT_TRUE(model.chassis.baseMacAddress.empty());
+    EXPECT_EQ(model.chassis.baseMacAddressSource, FieldSource::Default);
 }
 
 // ---------------------------------------------------------------------------

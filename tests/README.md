@@ -186,7 +186,7 @@ bridge drains the write asynchronously.
 
 | File                                                            | Scope                                                                                                                                                          |
 |-----------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [cases/service_root.json](redfish-api/cases/service_root.json)  | `/redfish/v1/`, `Product=SONiCBMC`, auth enforcement                                                                                                           |
+| [cases/service_root.json](redfish-api/cases/service_root.json)  | `/redfish/v1/`, `Product=SONiCBMC-<base MAC>` (base MAC from CONFIG_DB), auth enforcement                                                                       |
 | [cases/chassis.json](redfish-api/cases/chassis.json)            | inventory fields surfaced from CONFIG_DB `DEVICE_METADATA`                                                                                                     |
 | [cases/oem_manager.json](redfish-api/cases/oem_manager.json)    | OEM RackManager: action discovery, `SubmitAlert` / `SubmitTelemetry` end-to-end into STATE_DB, negative paths (400/401/405) with Redfish error-body assertions |
 

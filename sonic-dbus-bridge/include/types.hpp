@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -79,12 +80,16 @@ struct ChassisInfo
     std::string chassisType{"RackMount"};
     bool present{true};
     std::string prettyName{"SONiC Chassis"};
+    // Base MAC address from CONFIG_DB, stored lower-cased; empty if CONFIG_DB
+    // does not provide it.
+    std::string baseMacAddress{""};
 
     // Source tracking
     FieldSource serialNumberSource{FieldSource::Default};
     FieldSource partNumberSource{FieldSource::Default};
     FieldSource manufacturerSource{FieldSource::Default};
     FieldSource modelSource{FieldSource::Default};
+    FieldSource baseMacAddressSource{FieldSource::Default};
 };
 
 /**
