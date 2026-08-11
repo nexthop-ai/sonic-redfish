@@ -4,6 +4,7 @@
 // Copyright (C) 2026 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -341,7 +342,8 @@ InventoryModel BridgeApp::buildInitialModel()
         chassisState = redisAdapter_->getChassisState();
     }
 
-    auto model = InventoryModelBuilder::build(fruInfo, deviceMetadata, platformDesc, chassisState);
+    auto model = InventoryModelBuilder::build(
+        fruInfo, deviceMetadata, platformDesc, chassisState);
 
     // Read firmware versions for FirmwareInventory
     model.firmwareVersions = redisAdapter_->getFirmwareVersions();
@@ -372,7 +374,8 @@ void BridgeApp::createDbusObjects()
         objectMapper_->registerObject(
             "/xyz/openbmc_project/inventory/system/chassis",
             {"xyz.openbmc_project.Inventory.Item.Chassis",
-             "xyz.openbmc_project.Inventory.Decorator.Asset"});
+             "xyz.openbmc_project.Inventory.Decorator.Asset",
+             "xyz.openbmc_project.Inventory.Item.NetworkInterface"});
 
         // System inventory object
         objectMapper_->registerObject(

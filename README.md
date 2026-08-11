@@ -64,18 +64,24 @@ Both components are built as Debian packages (`.deb`) for easy integration with 
 ### 2.2. Build
 
 ```bash
-# Build all components (Docker-based, produces .deb packages)
+# Build all components AND run unit + integration tests (Docker-based)
 make
 
 # Or explicitly
 make all
+
+# Build the .deb packages only, without running any tests
+make build
 ```
 
-Build artifacts will be available in `target/debs/trixie/`:
-- `bmcweb_1.0.0_arm64.deb`
-- `bmcweb-dbg_1.0.0_arm64.deb`
-- `sonic-dbus-bridge_1.0.0_arm64.deb`
-- `sonic-dbus-bridge-dbgsym_1.0.0_arm64.deb`
+Build artifacts will be available in `target/debs/trixie/` (`<arch>` is the
+build host architecture, e.g. `arm64` or `amd64`):
+- `bmcweb_1.0.0_<arch>.deb`
+- `bmcweb-dbg_1.0.0_<arch>.deb`
+- `sonic-dbus-bridge_1.0.0_<arch>.deb`
+- `sonic-dbus-bridge-dbgsym_1.0.0_<arch>.deb`
+
+Plus the matching `.changes`, `.buildinfo` and `.dsc` files.
 
 ### 2.3. Build Targets
 
@@ -83,15 +89,25 @@ Build artifacts will be available in `target/debs/trixie/`:
 # Show all available targets
 make help
 
+# Build both components, no tests
+make build
+
 # Build individual components (automatically runs clean + dependencies)
-make build-bmcweb    # Runs: clean -> setup-bmcweb -> apply-patches -> build
+make build-bmcweb    # Runs: clean -> setup-bmcweb -> copy-oem-extension -> apply-patches -> build
 make build-bridge    # Runs: clean -> build
 
-# Clean build artifacts (removes build dirs, resets bmcweb source)
+# Run the test suites (see section 10)
+make test            # Redfish API integration tests (requires a prior build)
+make unit-test       # C++ gtest unit tests
+
+# Clean build artifacts (removes build dirs and target/, resets bmcweb source)
 make clean
 
-# Complete reset (clean + remove Docker images + full git reset)
+# Complete reset (clean + delete bmcweb/ + remove Docker images)
 make reset
+
+# Remove a test container left behind by `make test NODELETE=1`
+make clean-debug
 ```
 
 ### 2.4. Build Options
@@ -108,7 +124,16 @@ make BMCWEB_HEAD_COMMIT=abc123
 
 # Build with custom bmcweb repository URL
 make BMCWEB_REPO_URL=https://github.com/custom/bmcweb.git
+
+# Pin a different stdexec revision (default: fee4d651...)
+make STDEXEC_REVISION=<sha>
+
+# Keep the integration-test container alive for debugging
+make test NODELETE=1
 ```
+
+`CONFIGURED_ARCH` (default: `amd64`) is used only by the
+sonic-buildimage integration targets described in section 3.
 
 <sub>[^ Back to Table of Contents](#table-of-contents)</sub>
 
@@ -139,30 +164,36 @@ make all
    - Auto-clone from GitHub if not present
    - Checkout to specified commit (default: 6926d430)
 
-3. Apply patches
+3. Copy OEM extension into the bmcweb source tree
+   - oem-extension/sonic/ and oem-extension/schema/ (see section 9)
+
+4. Apply patches
    - Apply patches from patches/series to bmcweb source
 
-4. Build sonic-dbus-bridge
+5. Build sonic-dbus-bridge
    - Uses pre-installed sdbusplus from Docker image
    - dpkg-buildpackage creates .deb packages
 
-5. Build bmcweb
+6. Build bmcweb
    - Meson downloads dependencies via .wrap files
    - dpkg-buildpackage creates .deb packages
 
-6. Collect artifacts to target/debs/trixie/
-   - bmcweb_1.0.0_arm64.deb
-   - bmcweb-dbg_1.0.0_arm64.deb
-   - sonic-dbus-bridge_1.0.0_arm64.deb
-   - sonic-dbus-bridge-dbgsym_1.0.0_arm64.deb
+7. Collect artifacts to target/debs/trixie/
+   - bmcweb_1.0.0_<arch>.deb
+   - bmcweb-dbg_1.0.0_<arch>.deb
+   - sonic-dbus-bridge_1.0.0_<arch>.deb
+   - sonic-dbus-bridge-dbgsym_1.0.0_<arch>.deb
    - Plus .changes, .buildinfo, .dsc files
+
+8. Run unit tests (make unit-test), then integration tests (make test)
+   - Any test failure fails the whole `make all` invocation
 ```
 
 ### 3.2. Automatic Dependencies
 
 The build system automatically handles dependencies:
 
-- **`build-bmcweb`**: Automatically runs `clean` -> `setup-bmcweb` -> `apply-patches` -> build
+- **`build-bmcweb`**: Automatically runs `clean` -> `setup-bmcweb` -> `copy-oem-extension` -> `apply-patches` -> build
 - **`build-bridge`**: Automatically runs `clean` -> build
 
 This ensures a clean, reproducible build every time.
@@ -179,6 +210,11 @@ Patches are located in the `patches/` directory:
 
 Current patches:
 1. `0001-Integrating-bmcweb-with-SONiC-s-build-system.patch` - Adds Debian packaging
+2. `0002-add-bmc-MAC-address-based-product-to-Redfish-service-root.patch` - Sets
+   the service root `Product` to `SONiCBMC-<base MAC>` (MAC read from the bridge
+   over D-Bus; falls back to `SONiCBMC` when unavailable)
+3. `0003-pin-sdbusplus-to-known-good-revision.patch` - Pins the sdbusplus wrap
+4. `0004-Integrate-SONiC-OEM-extension.patch` - Wires in the OEM extension (section 9)
 
 To add a new patch:
 1. Make changes in bmcweb source directory.
@@ -194,16 +230,20 @@ To add a new patch:
 
 ### 5.1. `clean` - Remove build artifacts, reset source
 
-- Removes: `obj-*`, `debian/`, `.deb` files, subproject builds
-- Resets: bmcweb source to clean git state (so patches can be reapplied)
-- Keeps: Docker images, target directory
+- Removes: `obj-*`, `debian/` build state, `.deb`/`.changes`/`.buildinfo`/`.dsc`
+  strays at the repo root, subproject checkouts, and the `target/` directory
+- Resets: bmcweb source to clean git state via `git reset --hard` + `git clean -ffdx`
+  (so patches can be reapplied)
+- Keeps: Docker images, the `bmcweb/` directory itself
+- Needs `sudo` to reclaim ownership of root-owned files left by Docker builds
 - Use when: You want to rebuild from scratch
 
 ### 5.2. `reset` - Complete cleanup
 
-- Does everything `clean` does, plus:
-- Removes: Docker images, target directory
-- Resets: bmcweb to base commit with `git clean -fdx`
+- Does everything `clean` does for `sonic-dbus-bridge` and `target/`, plus:
+- Deletes: the entire `bmcweb/` source directory (re-cloned on the next build)
+- Removes: the builder image (`sonic-redfish-builder:latest`) and the test image
+  (`sonic-redfish-test:latest`)
 - Use when: You want to start completely fresh
 
 <sub>[^ Back to Table of Contents](#table-of-contents)</sub>
@@ -222,7 +262,8 @@ Other dependencies are managed via **Meson wrap files** (`.wrap`):
 ### 6.1. bmcweb dependencies
 
 - `bmcweb/subprojects/sdbusplus.wrap` - D-Bus C++ bindings (fallback; prefers system package)
-- Plus other dependencies defined in bmcweb upstream
+- Plus other dependencies defined in bmcweb upstream (boost, nghttp2,
+  nlohmann_json, openssl, cli11, tinyxml2, zstd, gtest)
 
 ### 6.2. sonic-dbus-bridge dependencies
 
@@ -245,7 +286,7 @@ The Debian packages can be installed in SONiC images.
 - **License**: Apache-2.0
 - **Purpose**: Redfish API server providing standard Redfish REST API
 - **Build system**: Meson + Debian packaging
-- **Output**: `bmcweb_1.0.0_arm64.deb`, `bmcweb-dbg_1.0.0_arm64.deb`
+- **Output**: `bmcweb_1.0.0_<arch>.deb`, `bmcweb-dbg_1.0.0_<arch>.deb`
 - **Auto-clone**: Automatically cloned from GitHub if not present
 
 ### 7.2. sonic-dbus-bridge
@@ -254,12 +295,13 @@ The Debian packages can be installed in SONiC images.
 - **Purpose**: Bridge SONiC Redis database to D-Bus for bmcweb integration
 - **Features**:
   - Redis to D-Bus data synchronization
-  - Platform inventory management
+  - Platform inventory management (including the base MAC address from CONFIG_DB)
   - FRU EEPROM data export
   - User management integration
   - State management (host, chassis)
+  - Rack-manager commands, alerts and telemetry persisted to STATE_DB
 - **Build system**: Meson + Debian packaging
-- **Output**: `sonic-dbus-bridge_1.0.0_arm64.deb`, `sonic-dbus-bridge-dbgsym_1.0.0_arm64.deb`
+- **Output**: `sonic-dbus-bridge_1.0.0_<arch>.deb`, `sonic-dbus-bridge-dbgsym_1.0.0_<arch>.deb`
 - **Configuration**: `config/config.yaml` for Redis, D-Bus, and platform settings
 
 <sub>[^ Back to Table of Contents](#table-of-contents)</sub>
@@ -287,6 +329,7 @@ D-Bus security policies are defined in `sonic-dbus-bridge/dbus/`:
 - `xyz.openbmc_project.State.Host.conf` - Host state management
 - `xyz.openbmc_project.User.Manager.conf` - User management
 - `xyz.openbmc_project.bmcweb.conf` - bmcweb service
+- `com.sonic.RackManager.conf` - SONiC rack-manager OEM service (section 9)
 
 These files are installed to `/etc/dbus-1/system.d/` during package installation.
 
@@ -503,7 +546,7 @@ GET /redfish/v1/
     "@odata.id": "/redfish/v1/Managers"
   },
   "Name": "Root Service",
-  "Product": "SONiCBMC",
+  "Product": "SONiCBMC-aa:18:f1:e4:27:60",
   "ProtocolFeaturesSupported": {
     "DeepOperations": {
       "DeepPATCH": false,
