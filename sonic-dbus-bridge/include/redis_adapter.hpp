@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -97,8 +98,9 @@ class RedisAdapter
     /**
      * @brief Get all leak sensor data from STATE_DB
      *
-     * Reads LEAK_SENSOR|* keys from STATE_DB.
-     * Each key is a hash with fields: state, type, present.
+     * Reads LIQUID_COOLING_INFO|* keys from STATE_DB (populated by
+     * thermalctld). Each key is a hash with fields such as leaking,
+     * leak_sensor_status, leak_severity, type and location.
      *
      * @return Vector of leak sensor entries
      */
@@ -107,10 +109,10 @@ class RedisAdapter
     /**
      * @brief Get a single leak sensor by name from STATE_DB
      *
-     * Reads LEAK_SENSOR|<name> hash. More efficient than getLeakSensors()
+     * Reads LIQUID_COOLING_INFO|<name> hash. More efficient than getLeakSensors()
      * when only one sensor needs to be read (avoids KEYS scan).
      *
-     * @param name Sensor name (e.g., "leak_sensor_1")
+     * @param name Sensor name (e.g., "leakage1")
      * @return Sensor info if found, nullopt otherwise
      */
     std::optional<LeakSensorInfo> getLeakSensor(const std::string& name);
@@ -160,7 +162,7 @@ class RedisAdapter
      * @brief Find keys matching a pattern
      *
      * @param ctx Redis context
-     * @param pattern Glob-style pattern (e.g., "LEAK_SENSOR|*")
+     * @param pattern Glob-style pattern (e.g., "LIQUID_COOLING_INFO|*")
      * @return Vector of matching key names
      */
     std::vector<std::string> keys(redisContext* ctx,

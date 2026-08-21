@@ -5,6 +5,7 @@
 # Copyright (C) 2024 SONiC Project
 # Author: Nexthop AI
 # Author: SONiC Project
+# Author: Chinmoy Dey <chinmoy@nexthop.ai>
 # License file: sonic-redfish/LICENSE
 #######################################
 
@@ -41,8 +42,17 @@ FIRMWARE = {
 
 CHASSIS_STATE = {"power_state": "on"}
 
+# LIQUID_COOLING_INFO|<name> mirrors what thermalctld writes.
 LEAK_SENSORS = {
-    "leak_sensor_1": {"state": "OK", "type": "Moisture", "present": "true"},
+    "leak_sensor_1": {
+        "name": "leak_sensor_1",
+        "leaking": "No",
+        "leak_status": "No",
+        "leak_sensor_status": "Good",
+        "type": "rope",
+        "location": "chassis_front",
+        "leak_severity": "None",
+    },
 }
 
 
@@ -62,7 +72,7 @@ def seed(host: str = "localhost", port: int = 6379) -> None:
     for name, fields in FIRMWARE.items():
         state_db.hset(f"BMC_FW_INVENTORY|{name}", mapping=fields)
     for name, fields in LEAK_SENSORS.items():
-        state_db.hset(f"LEAK_SENSOR|{name}", mapping=fields)
+        state_db.hset(f"LIQUID_COOLING_INFO|{name}", mapping=fields)
 
     print("redis: test data seeded (CONFIG_DB=4, STATE_DB=6)")
 

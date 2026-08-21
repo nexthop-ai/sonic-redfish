@@ -5,6 +5,7 @@
 # Copyright (C) 2024 SONiC Project
 # Author: Nexthop AI
 # Author: SONiC Project
+# Author: Chinmoy Dey <chinmoy@nexthop.ai>
 # License file: sonic-redfish/LICENSE
 #######################################
 
@@ -50,7 +51,7 @@ echo "  dbus-daemon ready (pid=$DBUS_PID)"
 echo "Starting redis-server..."
 # notify-keyspace-events KEA enables keyspace notifications (__keyspace@<db>__:<key>).
 # sonic-dbus-bridge subscribes to these to react to runtime STATE_DB changes (e.g.
-# LEAK_SENSOR state). Without it the bridge never sees writes made after startup,
+# LIQUID_COOLING_INFO leak state). Without it the bridge never sees writes made after startup,
 # so event-driven flows (leak detection events) never fire.
 redis-server --daemonize yes --logfile "$LOG_DIR/redis.log" --loglevel warning \
     --notify-keyspace-events KEA

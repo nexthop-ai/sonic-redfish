@@ -5,6 +5,7 @@
 # Copyright (C) 2024 SONiC Project
 # Author: Nexthop AI
 # Author: SONiC Project
+# Author: Chinmoy Dey <chinmoy@nexthop.ai>
 # License file: sonic-redfish/LICENSE
 #######################################
 
@@ -13,8 +14,9 @@
 Usage:
     trigger_leak.py <sensor_name> <state>      # state: OK | Warning | Critical
 
-The sonic-dbus-bridge watches LEAK_SENSOR|<name>, mirrors `state` onto the D-Bus
-DetectorState property, and bmcweb turns the change into a Redfish event.
+Writes the LIQUID_COOLING_INFO|<name> fields the way thermalctld does.
+The sonic-dbus-bridge derives the D-Bus DetectorState from
+leaking/leak_severity, and bmcweb turns the change into a Redfish event.
 """
 
 import sys
@@ -23,10 +25,20 @@ import redis
 
 STATE_DB = 6
 
+# Detector state -> thermalctld-style LIQUID_COOLING_INFO fields
+STATE_TO_FIELDS = {
+    "OK": {"leaking": "No", "leak_severity": "None"},
+    "Warning": {"leaking": "Yes", "leak_severity": "MINOR"},
+    "Critical": {"leaking": "Yes", "leak_severity": "CRITICAL"},
+}
+
 
 def set_leak_state(client, sensor_name: str, state: str) -> None:
-    """Write LEAK_SENSOR|<sensor_name> state into STATE_DB."""
-    client.hset(f"LEAK_SENSOR|{sensor_name}", mapping={"state": state})
+    """Write LIQUID_COOLING_INFO|<sensor_name> leak fields into STATE_DB."""
+    fields = dict(STATE_TO_FIELDS[state])
+    fields["leak_status"] = fields["leaking"]  # legacy alias
+    fields["leak_sensor_status"] = "Good"
+    client.hset(f"LIQUID_COOLING_INFO|{sensor_name}", mapping=fields)
 
 
 def main(argv) -> int:
@@ -34,10 +46,14 @@ def main(argv) -> int:
         print(f"usage: {argv[0]} <sensor_name> <state>", file=sys.stderr)
         return 2
     sensor_name, state = argv[1], argv[2]
+    if state not in STATE_TO_FIELDS:
+        print(f"invalid state {state!r}; expected one of "
+              f"{', '.join(STATE_TO_FIELDS)}", file=sys.stderr)
+        return 2
     client = redis.StrictRedis(host="localhost", port=6379, db=STATE_DB,
                                decode_responses=True)
     set_leak_state(client, sensor_name, state)
-    print(f"LEAK_SENSOR|{sensor_name} state -> {state}")
+    print(f"LIQUID_COOLING_INFO|{sensor_name} -> {state}")
     return 0
 
 

@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -187,11 +188,13 @@ void UpdateEngine::onRedisFieldChange(const std::string& key,
         {
             LOG_DEBUG("[UpdateEngine] HOST_STATE|switch-host changed (not currently mapped to D-Bus)");
         }
-        // Handle LEAK_SENSOR|<name> changes
-        else if (key.starts_with("LEAK_SENSOR|"))
+        // Handle LIQUID_COOLING_INFO|<name> changes
+        else if (key.starts_with("LIQUID_COOLING_INFO|"))
         {
-            std::string sensorName = key.substr(std::string("LEAK_SENSOR|").size());
-            LOG_INFO("[UpdateEngine] LEAK_SENSOR changed: %s", sensorName.c_str());
+            std::string sensorName =
+                key.substr(std::string("LIQUID_COOLING_INFO|").size());
+            LOG_INFO("[UpdateEngine] LIQUID_COOLING_INFO changed: %s",
+                     sensorName.c_str());
 
             auto sensor = redisAdapter_->getLeakSensor(sensorName);
             if (!sensor)
@@ -201,23 +204,26 @@ void UpdateEngine::onRedisFieldChange(const std::string& key,
             }
             else
             {
+                // Track the derived detector state plus sensor health so a
+                // change in either drives a D-Bus PropertiesChanged signal.
+                std::string newState = sensor->detectorState() +
+                                       (sensor->functional() ? "" : "|Fault");
+
                 auto it = cachedLeakStates_.find(sensorName);
-                if (it == cachedLeakStates_.end() ||
-                    it->second != sensor->state)
+                if (it == cachedLeakStates_.end() || it->second != newState)
                 {
                     LOG_INFO("[UpdateEngine] Leak sensor %s state: %s -> %s",
                              sensorName.c_str(),
                              it != cachedLeakStates_.end() ? it->second.c_str() : "(none)",
-                             sensor->state.c_str());
+                             newState.c_str());
 
-                    cachedLeakStates_[sensorName] = sensor->state;
-                    dbusExporter_->updateLeakSensorState(sensorName,
-                                                          sensor->state);
+                    cachedLeakStates_[sensorName] = newState;
+                    dbusExporter_->updateLeakSensorState(*sensor);
                 }
                 else
                 {
                     LOG_DEBUG("[UpdateEngine] Leak sensor %s state unchanged (%s)",
-                              sensorName.c_str(), sensor->state.c_str());
+                              sensorName.c_str(), newState.c_str());
                 }
             }
         }

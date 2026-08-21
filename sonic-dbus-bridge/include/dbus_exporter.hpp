@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -61,17 +62,17 @@ class DBusExporter
     bool updateObjects(const InventoryModel& model);
 
     /**
-     * @brief Update a leak sensor's DetectorState on D-Bus
+     * @brief Update a leak sensor's DetectorState and Functional on D-Bus
      *
-     * Calls set_property() which emits a PropertiesChanged D-Bus signal,
-     * allowing bmcweb to generate Redfish events.
+     * Derives DetectorState from the leaking/leak_severity fields and
+     * Functional from leak_sensor_status. Calls set_property() which emits
+     * a PropertiesChanged D-Bus signal, allowing bmcweb to generate
+     * Redfish events.
      *
-     * @param sensorName Sensor name (e.g., "leak_sensor_1")
-     * @param newState New state string ("OK", "Warning", "Critical", etc.)
+     * @param sensor Refreshed leak sensor data from STATE_DB
      * @return true on success
      */
-    bool updateLeakSensorState(const std::string& sensorName,
-                                const std::string& newState);
+    bool updateLeakSensorState(const LeakSensorInfo& sensor);
 
   private:
     sdbusplus::asio::object_server& inventoryServer_;

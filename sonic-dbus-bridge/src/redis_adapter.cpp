@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -390,6 +391,49 @@ std::vector<std::string> RedisAdapter::keys(redisContext* ctx,
     return result;
 }
 
+namespace
+{
+
+// Populate a LeakSensorInfo from a LIQUID_COOLING_INFO|<name> hash
+// (written by thermalctld).
+LeakSensorInfo parseLeakSensorFields(
+    const std::string& sensorName,
+    std::map<std::string, std::string>& fields)
+{
+    LeakSensorInfo sensor;
+    sensor.name = sensorName;
+
+    if (fields.count("leaking"))
+    {
+        sensor.leaking = fields["leaking"];
+    }
+    else if (fields.count("leak_status"))
+    {
+        // Legacy alias kept by thermalctld for backward compatibility
+        sensor.leaking = fields["leak_status"];
+    }
+    if (fields.count("leak_sensor_status"))
+    {
+        sensor.leakSensorStatus = fields["leak_sensor_status"];
+    }
+    if (fields.count("leak_severity"))
+    {
+        sensor.leakSeverity = fields["leak_severity"];
+    }
+    if (fields.count("type"))
+    {
+        sensor.type = fields["type"];
+    }
+    if (fields.count("location"))
+    {
+        sensor.location = fields["location"];
+    }
+
+    return sensor;
+}
+
+} // namespace
+
 std::vector<LeakSensorInfo> RedisAdapter::getLeakSensors()
 {
     std::vector<LeakSensorInfo> sensors;
@@ -399,12 +443,12 @@ std::vector<LeakSensorInfo> RedisAdapter::getLeakSensors()
         return sensors;
     }
 
-    // Discover all LEAK_SENSOR|* keys in STATE_DB
-    auto keyList = keys(stateDbContext_, "LEAK_SENSOR|*");
+    // Discover all LIQUID_COOLING_INFO|* keys in STATE_DB
+    auto keyList = keys(stateDbContext_, "LIQUID_COOLING_INFO|*");
 
     for (const auto& key : keyList)
     {
-        // Extract sensor name from key (e.g., "LEAK_SENSOR|leak_sensor_1" -> "leak_sensor_1")
+        // Extract sensor name from key (e.g., "LIQUID_COOLING_INFO|leakage1" -> "leakage1")
         size_t pos = key.find('|');
         if (pos == std::string::npos || pos + 1 >= key.size())
         {
@@ -418,26 +462,12 @@ std::vector<LeakSensorInfo> RedisAdapter::getLeakSensors()
             continue;
         }
 
-        LeakSensorInfo sensor;
-        sensor.name = sensorName;
-
-        if (fields.count("state"))
-        {
-            sensor.state = fields["state"];
-        }
-        if (fields.count("type"))
-        {
-            sensor.type = fields["type"];
-        }
-        if (fields.count("present"))
-        {
-            sensor.present = (fields["present"] == "true");
-        }
-
+        auto sensor = parseLeakSensorFields(sensorName, fields);
         sensors.push_back(sensor);
-        LOG_INFO("LeakSensor: %s state=%s type=%s present=%s",
-                 sensor.name.c_str(), sensor.state.c_str(),
-                 sensor.type.c_str(), sensor.present ? "true" : "false");
+        LOG_INFO("LeakSensor: %s leaking=%s severity=%s status=%s type=%s location=%s",
+                 sensor.name.c_str(), sensor.leaking.c_str(),
+                 sensor.leakSeverity.c_str(), sensor.leakSensorStatus.c_str(),
+                 sensor.type.c_str(), sensor.location.c_str());
     }
 
     LOG_INFO("Found %zu leak sensors in STATE_DB", sensors.size());
@@ -452,30 +482,14 @@ std::optional<LeakSensorInfo> RedisAdapter::getLeakSensor(
         return std::nullopt;
     }
 
-    std::string key = "LEAK_SENSOR|" + name;
+    std::string key = "LIQUID_COOLING_INFO|" + name;
     auto fields = hgetall(stateDbContext_, key);
     if (fields.empty())
     {
         return std::nullopt;
     }
 
-    LeakSensorInfo sensor;
-    sensor.name = name;
-
-    if (fields.count("state"))
-    {
-        sensor.state = fields["state"];
-    }
-    if (fields.count("type"))
-    {
-        sensor.type = fields["type"];
-    }
-    if (fields.count("present"))
-    {
-        sensor.present = (fields["present"] == "true");
-    }
-
-    return sensor;
+    return parseLeakSensorFields(name, fields);
 }
 
 void RedisAdapter::freeReply(void* reply)

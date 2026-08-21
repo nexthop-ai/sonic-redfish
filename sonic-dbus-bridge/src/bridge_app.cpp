@@ -468,8 +468,8 @@ void BridgeApp::startUpdateEngine()
     // Dynamically add leak sensor keys discovered at startup
     for (const auto& sensor : currentModel_.leakSensors)
     {
-        keysToSubscribe.push_back("LEAK_SENSOR|" + sensor.name);
-        LOG_INFO("Subscribing to leak sensor key: LEAK_SENSOR|%s",
+        keysToSubscribe.push_back("LIQUID_COOLING_INFO|" + sensor.name);
+        LOG_INFO("Subscribing to leak sensor key: LIQUID_COOLING_INFO|%s",
                  sensor.name.c_str());
     }
 
