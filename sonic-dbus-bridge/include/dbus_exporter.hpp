@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -60,6 +61,19 @@ class DBusExporter
      */
     bool updateObjects(const InventoryModel& model);
 
+    /**
+     * @brief Update a leak sensor's DetectorState and Functional on D-Bus
+     *
+     * Derives DetectorState from the leaking/leak_severity fields and
+     * Functional from leak_sensor_status. Calls set_property() which emits
+     * a PropertiesChanged D-Bus signal, allowing bmcweb to generate
+     * Redfish events.
+     *
+     * @param sensor Refreshed leak sensor data from STATE_DB
+     * @return true on success
+     */
+    bool updateLeakSensorState(const LeakSensorInfo& sensor);
+
   private:
     sdbusplus::asio::object_server& inventoryServer_;
 
@@ -92,6 +106,19 @@ class DBusExporter
      * - xyz.openbmc_project.Software.Activation (Activation, RequestedActivation)
      */
     bool createFirmwareObjects(const std::vector<FirmwareVersionInfo>& versions);
+
+    /**
+     * @brief Create leak sensor D-Bus objects under /xyz/openbmc_project/sensors/leak/
+     *
+     * Creates one D-Bus object per leak sensor with:
+     * - xyz.openbmc_project.Inventory.Item.LeakDetector (Type, DetectorState)
+     * - xyz.openbmc_project.State.Decorator.OperationalStatus (Functional)
+     * - xyz.openbmc_project.Inventory.Item (Present, PrettyName)
+     *
+     * DetectorState is registered as a mutable property so that set_property()
+     * emits PropertiesChanged signals for bmcweb event monitoring.
+     */
+    bool createLeakSensorObjects(const std::vector<LeakSensorInfo>& sensors);
 };
 
 } // namespace sonic::dbus_bridge

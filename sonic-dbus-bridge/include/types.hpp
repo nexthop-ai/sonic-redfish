@@ -126,6 +126,61 @@ struct FanInfo
 };
 
 /**
+ * @brief Leak sensor information from STATE_DB
+ *
+ * Mirrors the LIQUID_COOLING_INFO|<sensor_name> schema populated by
+ * thermalctld.
+ */
+struct LeakSensorInfo
+{
+    std::string name;                     // e.g., "leakage1"
+    std::string leaking{"N/A"};           // "Yes", "No", "N/A" (sensor not readable)
+    std::string leakSensorStatus{"Good"}; // "Good" or "Fault"
+    std::string leakSeverity{"None"};     // "CRITICAL", "MINOR", "None" (per-sensor)
+    std::string type{"unknown"};          // e.g., "rope", "flex_pcb", "spot"
+    std::string location{"unknown"};      // leak sensor location
+
+    /**
+     * @brief Derive the D-Bus/Redfish DetectorState from the STATE_DB fields
+     *
+     * "OK" when not leaking, "Warning" for a MINOR leak, "Critical" for any
+     * other confirmed leak, "Unavailable" when the sensor is not readable.
+     */
+    std::string detectorState() const
+    {
+        if (leaking == "No")
+        {
+            return "OK";
+        }
+        if (leaking == "Yes")
+        {
+            return (leakSeverity == "MINOR") ? "Warning" : "Critical";
+        }
+        return "Unavailable";
+    }
+
+    /**
+     * @brief Is the leak sensor hardware itself healthy?
+     */
+    bool functional() const
+    {
+        return leakSensorStatus != "Fault";
+    }
+
+    /**
+     * @brief Map the platform sensor type onto the Redfish LeakDetectorType
+     *
+     * Redfish only defines "Moisture" and "FloatSwitch"; the platform
+     * sensor types (rope, flex_pcb, spot, ...) are all moisture based.
+     */
+    std::string redfishDetectorType() const
+    {
+        return (type.find("float") != std::string::npos) ? "FloatSwitch"
+                                                         : "Moisture";
+    }
+};
+
+/**
  * @brief Platform description from platform.json
  */
 struct PlatformDescription
@@ -168,6 +223,7 @@ struct InventoryModel
     ChassisState chassisState;
     std::vector<PsuInfo> psus;
     std::vector<FanInfo> fans;
+    std::vector<LeakSensorInfo> leakSensors;
     std::vector<FirmwareVersionInfo> firmwareVersions;
 };
 

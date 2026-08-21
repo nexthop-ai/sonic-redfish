@@ -22,6 +22,13 @@ constexpr const char* IFACE_NETWORK_INTERFACE = "xyz.openbmc_project.Inventory.I
 constexpr const char* IFACE_STATE_CHASSIS = "xyz.openbmc_project.State.Chassis";
 constexpr const char* IFACE_SOFTWARE_VERSION = "xyz.openbmc_project.Software.Version";
 constexpr const char* IFACE_SOFTWARE_ACTIVATION = "xyz.openbmc_project.Software.Activation";
+constexpr const char* IFACE_LEAK_DETECTOR = "xyz.openbmc_project.Inventory.Item.LeakDetector";
+constexpr const char* IFACE_OPERATIONAL_STATUS = "xyz.openbmc_project.State.Decorator.OperationalStatus";
+constexpr const char* IFACE_INVENTORY_ITEM = "xyz.openbmc_project.Inventory.Item";
+
+constexpr const char* LEAK_SENSOR_BASE_PATH = "/xyz/openbmc_project/sensors/leak/";
+constexpr const char* DETECTOR_STATE_PREFIX =
+    "xyz.openbmc_project.Inventory.Item.LeakDetector.DetectorState.";
 
 // D-Bus object paths
 constexpr const char* OBJ_PATH_CHASSIS = "/xyz/openbmc_project/inventory/system/chassis";
@@ -60,6 +67,14 @@ bool DBusExporter::createObjects(const InventoryModel& model)
         if (!createFirmwareObjects(model.firmwareVersions))
         {
             LOG_WARNING("Failed to create some firmware inventory objects");
+        }
+    }
+
+    if (!model.leakSensors.empty())
+    {
+        if (!createLeakSensorObjects(model.leakSensors))
+        {
+            LOG_WARNING("Failed to create some leak sensor objects");
         }
     }
 
@@ -259,6 +274,129 @@ bool DBusExporter::createFirmwareObjects(
         }
     }
 
+    return true;
+}
+
+bool DBusExporter::createLeakSensorObjects(
+    const std::vector<LeakSensorInfo>& sensors)
+{
+    currentModel_.leakSensors = sensors;
+
+    for (const auto& sensor : sensors)
+    {
+        std::string objPath = LEAK_SENSOR_BASE_PATH + sensor.name;
+
+        try
+        {
+            // Map the derived detector state to a fully-qualified D-Bus enum
+            std::string stateEnum = DETECTOR_STATE_PREFIX +
+                                    sensor.detectorState();
+
+            // LeakDetector interface — DetectorState is mutable so set_property()
+            // emits PropertiesChanged signals for bmcweb event monitoring.
+            auto leakIface = inventoryServer_.add_interface(objPath,
+                                                             IFACE_LEAK_DETECTOR);
+            leakIface->register_property<std::string>("DetectorState", stateEnum);
+            leakIface->register_property_r<std::string>(
+                "Type", std::string(""),
+                sdbusplus::vtable::property_::const_,
+                [type = sensor.redfishDetectorType()](const auto&) {
+                    return type;
+                });
+            leakIface->initialize();
+            interfaces_[objPath + ":" + IFACE_LEAK_DETECTOR] = leakIface;
+
+            // OperationalStatus interface — Functional reflects sensor
+            // hardware health (leak_sensor_status), not leak state.
+            auto statusIface = inventoryServer_.add_interface(objPath,
+                                                               IFACE_OPERATIONAL_STATUS);
+            statusIface->register_property<bool>("Functional",
+                                                 sensor.functional());
+            statusIface->initialize();
+            interfaces_[objPath + ":" + IFACE_OPERATIONAL_STATUS] = statusIface;
+
+            // Inventory.Item interface — presence in LIQUID_COOLING_INFO
+            // means the sensor exists on this platform.
+            auto itemIface = inventoryServer_.add_interface(objPath,
+                                                             IFACE_INVENTORY_ITEM);
+            itemIface->register_property_r<bool>(
+                "Present", true,
+                sdbusplus::vtable::property_::const_,
+                [](const auto&) {
+                    return true;
+                });
+            std::string prettyName = "Leak Detector " + sensor.name;
+            if (!sensor.location.empty() && sensor.location != "unknown")
+            {
+                prettyName += " (" + sensor.location + ")";
+            }
+            itemIface->register_property_r<std::string>(
+                "PrettyName", std::string(""),
+                sdbusplus::vtable::property_::const_,
+                [prettyName](const auto&) {
+                    return prettyName;
+                });
+            itemIface->initialize();
+            interfaces_[objPath + ":" + IFACE_INVENTORY_ITEM] = itemIface;
+
+            LOG_INFO("Created leak sensor object at %s (state=%s, type=%s, location=%s)",
+                     objPath.c_str(), sensor.detectorState().c_str(),
+                     sensor.type.c_str(), sensor.location.c_str());
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("Failed to create leak sensor object at %s: %s",
+                      objPath.c_str(), e.what());
+        }
+    }
+
+    return true;
+}
+
+bool DBusExporter::updateLeakSensorState(const LeakSensorInfo& sensor)
+{
+    std::string objPath = LEAK_SENSOR_BASE_PATH + sensor.name;
+    std::string leakKey = objPath + ":" + IFACE_LEAK_DETECTOR;
+    std::string statusKey = objPath + ":" + IFACE_OPERATIONAL_STATUS;
+
+    auto leakIt = interfaces_.find(leakKey);
+    if (leakIt == interfaces_.end())
+    {
+        LOG_ERROR("Leak sensor interface not found for %s",
+                  sensor.name.c_str());
+        return false;
+    }
+
+    std::string newState = sensor.detectorState();
+    std::string stateEnum = DETECTOR_STATE_PREFIX + newState;
+
+    // set_property emits PropertiesChanged D-Bus signal
+    bool ok = leakIt->second->set_property("DetectorState", stateEnum);
+    if (!ok)
+    {
+        LOG_ERROR("Failed to set DetectorState for %s", sensor.name.c_str());
+        return false;
+    }
+
+    // Update Functional status from leak_sensor_status
+    auto statusIt = interfaces_.find(statusKey);
+    if (statusIt != interfaces_.end())
+    {
+        statusIt->second->set_property("Functional", sensor.functional());
+    }
+
+    // Update cached model
+    for (auto& s : currentModel_.leakSensors)
+    {
+        if (s.name == sensor.name)
+        {
+            s = sensor;
+            break;
+        }
+    }
+
+    LOG_INFO("Updated leak sensor %s state to %s", sensor.name.c_str(),
+             newState.c_str());
     return true;
 }
 

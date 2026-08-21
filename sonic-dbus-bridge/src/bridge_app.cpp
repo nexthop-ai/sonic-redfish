@@ -348,6 +348,12 @@ InventoryModel BridgeApp::buildInitialModel()
     // Read firmware versions for FirmwareInventory
     model.firmwareVersions = redisAdapter_->getFirmwareVersions();
 
+    // Read leak sensors from STATE_DB
+    if (redisAdapter_->isStateDbConnected())
+    {
+        model.leakSensors = redisAdapter_->getLeakSensors();
+    }
+
     return model;
 }
 
@@ -395,6 +401,17 @@ void BridgeApp::createDbusObjects()
                 fwPath,
                 {"xyz.openbmc_project.Software.Version",
                  "xyz.openbmc_project.Software.Activation"});
+        }
+
+        // Leak sensor objects
+        for (const auto& sensor : currentModel_.leakSensors)
+        {
+            std::string sensorPath = std::string("/xyz/openbmc_project/sensors/leak/") + sensor.name;
+            objectMapper_->registerObject(
+                sensorPath,
+                {"xyz.openbmc_project.Inventory.Item.LeakDetector",
+                 "xyz.openbmc_project.State.Decorator.OperationalStatus",
+                 "xyz.openbmc_project.Inventory.Item"});
         }
     }
 }
@@ -447,6 +464,14 @@ void BridgeApp::startUpdateEngine()
         "CHASSIS_STATE",          // Power state
         "HOST_STATE|switch-host"  // Host power state
     };
+
+    // Dynamically add leak sensor keys discovered at startup
+    for (const auto& sensor : currentModel_.leakSensors)
+    {
+        keysToSubscribe.push_back("LIQUID_COOLING_INFO|" + sensor.name);
+        LOG_INFO("Subscribing to leak sensor key: LIQUID_COOLING_INFO|%s",
+                 sensor.name.c_str());
+    }
 
     // Register callback to UpdateEngine
     auto callback = [this](const std::string& key,
