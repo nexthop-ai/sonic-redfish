@@ -18,8 +18,8 @@ namespace sonic::dbus_bridge
 /**
  * @brief Inventory model builder and normalizer
  * 
- * Merges data from multiple sources (FRU, Redis, platform.json)
- * with precedence: FRU > CONFIG_DB > platform.json > defaults
+ * Merges data from multiple sources with a per-field precedence that prefers
+ * CONFIG_DB (Redis). The base MAC address comes from CONFIG_DB only.
  */
 class InventoryModelBuilder
 {

@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -359,6 +360,136 @@ std::vector<FirmwareVersionInfo> RedisAdapter::getFirmwareVersions()
 
     LOG_INFO("FirmwareInventory: Total %zu firmware entries", versions.size());
     return versions;
+}
+
+std::vector<std::string> RedisAdapter::keys(redisContext* ctx,
+                                              const std::string& pattern)
+{
+    std::vector<std::string> result;
+
+    redisReply* reply = static_cast<redisReply*>(
+        redisCommand(ctx, "KEYS %s", pattern.c_str()));
+
+    if (!reply)
+    {
+        return result;
+    }
+
+    if (reply->type == REDIS_REPLY_ARRAY)
+    {
+        for (size_t i = 0; i < reply->elements; i++)
+        {
+            if (reply->element[i]->type == REDIS_REPLY_STRING)
+            {
+                result.emplace_back(reply->element[i]->str,
+                                    reply->element[i]->len);
+            }
+        }
+    }
+
+    freeReplyObject(reply);
+    return result;
+}
+
+namespace
+{
+
+// Populate a LeakSensorInfo from a LIQUID_COOLING_INFO|<name> hash
+// (written by thermalctld).
+LeakSensorInfo parseLeakSensorFields(
+    const std::string& sensorName,
+    std::map<std::string, std::string>& fields)
+{
+    LeakSensorInfo sensor;
+    sensor.name = sensorName;
+
+    if (fields.count("leaking"))
+    {
+        sensor.leaking = fields["leaking"];
+    }
+    else if (fields.count("leak_status"))
+    {
+        // Legacy alias kept by thermalctld for backward compatibility
+        sensor.leaking = fields["leak_status"];
+    }
+    if (fields.count("leak_sensor_status"))
+    {
+        sensor.leakSensorStatus = fields["leak_sensor_status"];
+    }
+    if (fields.count("leak_severity"))
+    {
+        sensor.leakSeverity = fields["leak_severity"];
+    }
+    if (fields.count("type"))
+    {
+        sensor.type = fields["type"];
+    }
+    if (fields.count("location"))
+    {
+        sensor.location = fields["location"];
+    }
+
+    return sensor;
+}
+
+} // namespace
+
+std::vector<LeakSensorInfo> RedisAdapter::getLeakSensors()
+{
+    std::vector<LeakSensorInfo> sensors;
+
+    if (!stateDbContext_)
+    {
+        return sensors;
+    }
+
+    // Discover all LIQUID_COOLING_INFO|* keys in STATE_DB
+    auto keyList = keys(stateDbContext_, "LIQUID_COOLING_INFO|*");
+
+    for (const auto& key : keyList)
+    {
+        // Extract sensor name from key (e.g., "LIQUID_COOLING_INFO|leakage1" -> "leakage1")
+        size_t pos = key.find('|');
+        if (pos == std::string::npos || pos + 1 >= key.size())
+        {
+            continue;
+        }
+        std::string sensorName = key.substr(pos + 1);
+
+        auto fields = hgetall(stateDbContext_, key);
+        if (fields.empty())
+        {
+            continue;
+        }
+
+        auto sensor = parseLeakSensorFields(sensorName, fields);
+        sensors.push_back(sensor);
+        LOG_INFO("LeakSensor: %s leaking=%s severity=%s status=%s type=%s location=%s",
+                 sensor.name.c_str(), sensor.leaking.c_str(),
+                 sensor.leakSeverity.c_str(), sensor.leakSensorStatus.c_str(),
+                 sensor.type.c_str(), sensor.location.c_str());
+    }
+
+    LOG_INFO("Found %zu leak sensors in STATE_DB", sensors.size());
+    return sensors;
+}
+
+std::optional<LeakSensorInfo> RedisAdapter::getLeakSensor(
+    const std::string& name)
+{
+    if (!stateDbContext_)
+    {
+        return std::nullopt;
+    }
+
+    std::string key = "LIQUID_COOLING_INFO|" + name;
+    auto fields = hgetall(stateDbContext_, key);
+    if (fields.empty())
+    {
+        return std::nullopt;
+    }
+
+    return parseLeakSensorFields(name, fields);
 }
 
 void RedisAdapter::freeReply(void* reply)

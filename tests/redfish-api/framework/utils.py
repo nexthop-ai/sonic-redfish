@@ -4,6 +4,7 @@
 # Copyright (C) 2024 SONiC Project
 # Author: Nexthop AI
 # Author: SONiC Project
+# Author: Chinmoy Dey <chinmoy@nexthop.ai>
 # License file: sonic-redfish/LICENSE
 #######################################
 
@@ -139,6 +140,9 @@ def run_validators(validators, actual, state):
 
         if v_type == "exists":
             assert extracted is not None, f"Validator failed: Path '{path}' not found"
+        elif v_type == "equals":
+            assert extracted == expected_val, \
+                f"Validator failed: '{path}' ('{extracted}') != expected '{expected_val}'"
         elif v_type == "not_exists":
             assert extracted is None, f"Validator failed: Path '{path}' should not exist"
         elif v_type == "length_gte":

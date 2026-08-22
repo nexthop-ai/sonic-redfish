@@ -17,13 +17,13 @@
     }
   },
   {
-    "name": "test_product_is_sonic_bmc",
-    "description": "Validates Product is sonic bmc",
+    "name": "test_product_includes_base_mac",
+    "description": "Validates Product is SONiCBMC-<base MAC from CONFIG_DB>",
     "method": "GET",
     "endpoint": "/redfish/v1/",
     "expected_status": 200,
     "expected_response": {
-      "Product": "SONiCBMC"
+      "Product": "SONiCBMC-00:11:22:33:44:55"
     }
   },
   {
