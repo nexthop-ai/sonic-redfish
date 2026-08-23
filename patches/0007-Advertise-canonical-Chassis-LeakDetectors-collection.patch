@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Chinmoy Dey <chinmoy@nexthop.ai>
+Date: Fri, 22 Aug 2026 00:00:00 +0000
+Subject: [PATCH 7/7] Advertise canonical Chassis LeakDetectors collection
+
+The rmc-events integration (patch 0005) serves the LeakDetector
+collection at both the canonical Chassis-level URI
+(/redfish/v1/Chassis/<id>/LeakDetectors, LeakDetection v1.2.0 /
+Chassis v1.26.0+) and the deprecated nested URI under
+ThermalSubsystem/LeakDetection, and links the deprecated tree from
+ThermalSubsystem. The canonical collection, however, was not reachable
+by navigation: the Chassis resource did not advertise it.
+
+Add the standard navigation link, as upstream does for every other
+child resource, so the canonical leak-detection tree is discoverable
+like a normal Redfish resource. Chassis.LeakDetectors is a property
+defined by the DMTF Chassis schema (since v1.26.0), which the pinned
+bmcweb bundles.
+
+ * chassis.hpp: advertise the canonical Chassis-level LeakDetectors
+   collection (/redfish/v1/Chassis/<id>/LeakDetectors).
+
+This patch only adds a link property to an existing handler; it adds
+no new routes (those come from patch 0005).
+---
+ redfish-core/lib/chassis.hpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/redfish-core/lib/chassis.hpp b/redfish-core/lib/chassis.hpp
+index 00000001..00000002 100644
+--- a/redfish-core/lib/chassis.hpp
++++ b/redfish-core/lib/chassis.hpp
+@@ -450,9 +450,14 @@
+     asyncResp->res.jsonValue["Assembly"]["@odata.id"] =
+         boost::urls::format("/redfish/v1/Chassis/{}/Assembly", chassisId);
+
+     // SensorCollection
+     asyncResp->res.jsonValue["Sensors"]["@odata.id"] =
+         boost::urls::format("/redfish/v1/Chassis/{}/Sensors", chassisId);
++
++    // LeakDetectorCollection (canonical location, Chassis v1.26.0+)
++    asyncResp->res.jsonValue["LeakDetectors"]["@odata.id"] =
++        boost::urls::format("/redfish/v1/Chassis/{}/LeakDetectors", chassisId);
++
+     asyncResp->res.jsonValue["Status"]["State"] = resource::State::Enabled;
+
+     nlohmann::json::array_t computerSystems;
+--
+2.34.1
