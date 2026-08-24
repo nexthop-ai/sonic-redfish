@@ -4,6 +4,7 @@
 # Copyright (C) 2024 SONiC Project
 # Author: Nexthop AI
 # Author: SONiC Project
+# Author: Chinmoy Dey <chinmoy@nexthop.ai>
 # License file: sonic-redfish/LICENSE
 #######################################
 
@@ -219,6 +220,21 @@ copy-rmc-events: setup-bmcweb
 	else \
 		echo "  No rmc-events directory found, skipping"; \
 	fi
+
+	@echo "  Linking leak-detection JSON schemas into json-schema-installed..."
+	@# The pinned bmcweb bundles the DMTF leak schemas but does not install
+	@# them, so /redfish/v1/JsonSchemas would not list them and describedby
+	@# links would dangle. Link them into the served set.
+	@for schema in LeakDetection.v1_1_0.json LeakDetector.v1_5_0.json LeakDetectorCollection.json; do \
+		src="$(BMCWEB_DIR)/redfish-core/schema/dmtf/json-schema/$$schema"; \
+		dst="$(BMCWEB_DIR)/redfish-core/schema/dmtf/json-schema-installed/$$schema"; \
+		if [ ! -f "$$src" ]; then \
+			echo "Error: expected leak schema not found in pinned bmcweb: $$schema"; \
+			exit 1; \
+		fi; \
+		ln -sf "../json-schema/$$schema" "$$dst"; \
+	done
+	@echo "  leak-detection schemas linked"
 
 # Apply patches using series file
 apply-patches: setup-bmcweb copy-oem-extension copy-rmc-events
