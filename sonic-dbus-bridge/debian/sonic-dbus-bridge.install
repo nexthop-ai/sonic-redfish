@@ -14,3 +14,4 @@ etc/dbus-1/system.d/xyz.openbmc_project.User.Manager.conf
 etc/dbus-1/system.d/xyz.openbmc_project.Inventory.Manager.conf
 etc/dbus-1/system.d/com.sonic.RackManager.conf
 var/lib/sonic-dbus-bridge
+usr/bin/bmcweb-activate

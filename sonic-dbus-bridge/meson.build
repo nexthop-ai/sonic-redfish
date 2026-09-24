@@ -109,6 +109,15 @@ executable(
     install_dir: get_option('bindir'),
 )
 
+# Socket activation helper: binds the configured port and hands it to bmcweb,
+# which otherwise falls back to a port compiled into the binary.
+executable(
+    'bmcweb-activate',
+    'src/bmcweb_activate.cpp',
+    install: true,
+    install_dir: get_option('bindir'),
+)
+
 # Install configuration file
 install_data(
     'config/config.yaml',
