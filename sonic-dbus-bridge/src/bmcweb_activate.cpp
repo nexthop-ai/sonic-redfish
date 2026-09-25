@@ -1,7 +1,7 @@
 ///////////////////////////////////////
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Nexthop AI
-// Author: Nexthop AI
+// Author: Shreyansh Jain <shreyansh@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
