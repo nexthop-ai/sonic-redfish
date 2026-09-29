@@ -161,8 +161,8 @@ bool UserMgr::loadTrustedCnames()
     haveCachedCnames_ = true;
     if (trim(cachedCnames_).empty())
     {
-        LOG_INFO("No trusted client common names configured; any common name "
-                 "from a certificate the staged CA issued is accepted");
+        LOG_WARNING("No trusted client common names configured; every client "
+                    "certificate is refused until client_crt_cname is set");
     }
     else
     {
@@ -198,10 +198,11 @@ bool UserMgr::isCommonNameTrusted(const std::string& commonName)
     const std::string& configured = cachedCnames_;
     if (trim(configured).empty())
     {
-        // No trusted list configured: any common name from a certificate the
-        // staged CA issued is accepted. Configuring the list is what turns
-        // common name enforcement on.
-        return true;
+        // No trusted list configured: refuse, as the SONiC REST API server
+        // does. Being issued by the staged CA is not enough on its own.
+        LOG_ERROR("GetUserInfo: no trusted common names configured; refusing "
+                  "'%s'", commonName.c_str());
+        return false;
     }
 
     std::istringstream stream(configured);

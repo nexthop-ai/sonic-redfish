@@ -101,9 +101,9 @@ class UserMgr
      *  Uses the list read from REDFISH|certs client_crt_cname at startup and
      *  held for the lifetime of the process, as the SONiC REST API server
      *  does, so changing it takes effect when this service restarts. An unset
-     *  list accepts any common name, which keeps a device usable before the
-     *  list has been pushed. While the list has never been read, requests are
-     *  refused rather than dropping the check.
+     *  or empty list refuses every common name, as the REST API server does.
+     *  While the list has never been read, requests are also refused rather
+     *  than dropping the check.
      *
      *  @param[in] commonName - common name taken from the client certificate
      *
