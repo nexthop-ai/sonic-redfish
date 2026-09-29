@@ -229,11 +229,13 @@ UserInfoMap UserMgr::getUserInfo(const std::string& userName)
 {
     // Authorization is not role-based on the SONiC BMC: there is no local user
     // database and no Unix accounts in this container. Access is decided by
-    // authentication, which is mTLS: a client either presents a certificate
-    // issued by the staged CA or it cannot complete the TLS handshake. On top
-    // of that, when a trusted common name list is configured in CONFIG_DB, the
-    // common name carried by the certificate (which bmcweb passes here as the
-    // identity) must match it. Anything accepted is answered with priv-admin.
+    // authentication, which is mTLS: bmcweb creates a session, and so asks
+    // here, only for a client certificate issued by the staged CA. A client
+    // without one still completes the TLS handshake, but has no session and is
+    // answered 401 before this is reached. On top of that, the common name
+    // carried by the certificate (which bmcweb passes here as the identity)
+    // must match the trusted list in CONFIG_DB; an empty list matches nothing.
+    // Anything accepted is answered with priv-admin.
     if (userName.empty())
     {
         LOG_ERROR("GetUserInfo: user name is empty");
