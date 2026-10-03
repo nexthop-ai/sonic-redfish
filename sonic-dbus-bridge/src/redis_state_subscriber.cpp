@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -283,13 +284,19 @@ bool RedisStateSubscriber::startMultiKey(const std::string& host, int port,
 
     LOG_INFO( "[RedisStateSubscriber] STATE_DB (DB 6) selected on both contexts");
 
-    // Subscribe to keyspace notifications for all keys
+    // Subscribe to keyspace notifications for all keys. Keys containing a
+    // glob ('*', '?', '[') use PSUBSCRIBE so dynamic keys such as
+    // RACK_MANAGER_COMMAND|CMD_<id> are covered.
     for (const auto& key : keys)
     {
         std::string channel = "__keyspace@6__:" + key;
-        LOG_INFO( "[RedisStateSubscriber] Subscribing to %s", channel.c_str());
+        bool pattern = key.find_first_of("*?[") != std::string::npos;
+        LOG_INFO( "[RedisStateSubscriber] Subscribing to %s%s", channel.c_str(),
+                  pattern ? " (pattern)" : "");
 
-        reply = (redisReply*)redisCommand(subContext_, "SUBSCRIBE %s", channel.c_str());
+        reply = (redisReply*)redisCommand(subContext_,
+                                          pattern ? "PSUBSCRIBE %s" : "SUBSCRIBE %s",
+                                          channel.c_str());
 
         if (!reply || reply->type == REDIS_REPLY_ERROR)
         {
@@ -367,20 +374,31 @@ void RedisStateSubscriber::subscriberLoop()
             continue;
         }
 
-        // Expected format: ["message", channel, message]
-        if (reply->type == REDIS_REPLY_ARRAY && reply->elements == 3)
+        // Expected format: ["message", channel, message] for SUBSCRIBE and
+        // ["pmessage", pattern, channel, message] for PSUBSCRIBE
+        if (reply->type == REDIS_REPLY_ARRAY &&
+            (reply->elements == 3 || reply->elements == 4) &&
+            reply->element[0]->str != nullptr)
         {
             std::string messageType = reply->element[0]->str;
-            std::string channel = reply->element[1]->str;
-            std::string message = reply->element[2]->str;
+            bool isPattern = (messageType == "pmessage" && reply->elements == 4);
+            bool isPlain = (messageType == "message" && reply->elements == 3);
 
-            LOG_DEBUG( "[RedisStateSubscriber] Received: type=%s, channel=%s, message=%s",
-                   messageType.c_str(), channel.c_str(), message.c_str());
-
-            if (messageType == "message" && message == "hset")
+            if ((isPattern || isPlain) &&
+                reply->element[reply->elements - 2]->str != nullptr &&
+                reply->element[reply->elements - 1]->str != nullptr)
             {
-                LOG_INFO( "[RedisStateSubscriber] HSET detected on %s", channel.c_str());
-                handleKeyspaceNotification(channel);
+                std::string channel = reply->element[reply->elements - 2]->str;
+                std::string message = reply->element[reply->elements - 1]->str;
+
+                LOG_DEBUG( "[RedisStateSubscriber] Received: type=%s, channel=%s, message=%s",
+                       messageType.c_str(), channel.c_str(), message.c_str());
+
+                if (message == "hset")
+                {
+                    LOG_INFO( "[RedisStateSubscriber] HSET detected on %s", channel.c_str());
+                    handleKeyspaceNotification(channel);
+                }
             }
         }
 
