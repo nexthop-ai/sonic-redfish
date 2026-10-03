@@ -57,6 +57,28 @@ struct ChassisState
 };
 
 /**
+ * @brief Switch-Host state from STATE_DB (HOST_STATE|switch-host, owned by bmcctld)
+ */
+struct HostStateInfo
+{
+    std::string devicePowerState;    // POWERED_ON, POWERING_OFF, ... (see host_state_mapping.hpp)
+    std::string deviceStatus;        // "ONLINE" or "OFFLINE"
+    std::string lastChangeTimestamp; // ISO 8601 UTC
+};
+
+/**
+ * @brief Rack manager command record from STATE_DB (RACK_MANAGER_COMMAND|<id>)
+ */
+struct RackManagerCommandInfo
+{
+    std::string commandId;           // CMD_<unix_seconds>_<counter>
+    std::string command;             // POWER_ON | POWER_OFF | GRACEFUL_SHUT | POWER_CYCLE
+    std::string status;              // PENDING | IN_PROGRESS | DONE | FAILED
+    std::string result;              // SUCCESS or failure reason (set by bmcctld)
+    std::string lastChangeTimestamp; // ISO 8601 UTC
+};
+
+/**
  * @brief Data source for a field
  */
 enum class FieldSource

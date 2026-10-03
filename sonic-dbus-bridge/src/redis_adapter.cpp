@@ -9,6 +9,7 @@
 ///////////////////////////////////////
 
 #include "redis_adapter.hpp"
+#include "host_state_mapping.hpp"
 #include "logger.hpp"
 #include <cstring>
 #include <fstream>
@@ -200,6 +201,52 @@ ChassisState RedisAdapter::getChassisState()
     }
     
     return state;
+}
+
+std::optional<HostStateInfo> RedisAdapter::getHostState()
+{
+    if (!stateDbContext_)
+    {
+        return std::nullopt;
+    }
+
+    auto fields = hgetall(stateDbContext_,
+                          std::string(host_state::KEY_HOST_STATE));
+    if (fields.empty())
+    {
+        return std::nullopt;
+    }
+
+    HostStateInfo info;
+    info.devicePowerState = fields[std::string(host_state::FIELD_DEVICE_POWER_STATE)];
+    info.deviceStatus = fields[std::string(host_state::FIELD_DEVICE_STATUS)];
+    info.lastChangeTimestamp = fields["last_change_timestamp"];
+    return info;
+}
+
+std::optional<RackManagerCommandInfo> RedisAdapter::getRackManagerCommand(
+    const std::string& commandId)
+{
+    if (!stateDbContext_ || commandId.empty())
+    {
+        return std::nullopt;
+    }
+
+    std::string key =
+        std::string(host_state::TABLE_RACK_MANAGER_COMMAND) + "|" + commandId;
+    auto fields = hgetall(stateDbContext_, key);
+    if (fields.empty())
+    {
+        return std::nullopt;
+    }
+
+    RackManagerCommandInfo info;
+    info.commandId = commandId;
+    info.command = fields[std::string(host_state::FIELD_COMMAND)];
+    info.status = fields[std::string(host_state::FIELD_STATUS)];
+    info.result = fields[std::string(host_state::FIELD_RESULT)];
+    info.lastChangeTimestamp = fields["last_change_timestamp"];
+    return info;
 }
 
 std::map<std::string, std::string> RedisAdapter::hgetall(redisContext* ctx,

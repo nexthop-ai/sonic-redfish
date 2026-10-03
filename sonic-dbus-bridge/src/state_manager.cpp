@@ -4,12 +4,15 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
 #include "state_manager.hpp"
+#include "host_state_mapping.hpp"
 #include "logger.hpp"
 #include "redis_state_publisher.hpp"
+#include <boost/asio/post.hpp>
 #include <cstring>
 
 namespace sonic::dbus_bridge
@@ -20,33 +23,31 @@ namespace
 
 // D-Bus interface names
 constexpr const char* IFACE_STATE_HOST = "xyz.openbmc_project.State.Host";
+constexpr const char* IFACE_STATE_CHASSIS = "xyz.openbmc_project.State.Chassis";
 
 // D-Bus object paths
 constexpr const char* OBJ_PATH_HOST = "/xyz/openbmc_project/state/host0";
-
-// Host transition values
-constexpr const char* HOST_TRANS_ON = "xyz.openbmc_project.State.Host.Transition.On";
-constexpr const char* HOST_TRANS_OFF = "xyz.openbmc_project.State.Host.Transition.Off";
-constexpr const char* HOST_TRANS_REBOOT = "xyz.openbmc_project.State.Host.Transition.Reboot";
-constexpr const char* HOST_TRANS_FORCE_WARM_REBOOT = "xyz.openbmc_project.State.Host.Transition.ForceWarmReboot";
-constexpr const char* HOST_TRANS_POWER_CYCLE = "xyz.openbmc_project.State.Host.Transition.PowerCycle";
-
-// Host state values
-constexpr const char* HOST_STATE_OFF = "xyz.openbmc_project.State.Host.HostState.Off";
-constexpr const char* HOST_STATE_TRANSITIONING = "xyz.openbmc_project.State.Host.HostState.TransitioningToRunning";
-constexpr const char* HOST_STATE_RUNNING = "xyz.openbmc_project.State.Host.HostState.Running";
+constexpr const char* OBJ_PATH_CHASSIS = "/xyz/openbmc_project/state/chassis0";
 
 // Async execution delay (milliseconds)
 constexpr int EXEC_DELAY_MS = 100;
 
+// Upper bound for bmcctld to move a command to DONE / FAILED. Covers
+// power_on_delay (300s default) plus oper-status verification. After this
+// the action slot is released so later requests are not blocked forever.
+constexpr std::chrono::seconds COMMAND_TIMEOUT{600};
+
 } // namespace
 
 StateManager::StateManager(sdbusplus::asio::object_server& server,
-                           boost::asio::io_context& io)
-    : server_(server), io_(io),
-      currentHostState_(HOST_STATE_RUNNING),
+                           boost::asio::io_context& io,
+                           std::shared_ptr<RedisAdapter> redisAdapter)
+    : server_(server), io_(io), redisAdapter_(std::move(redisAdapter)),
+      currentHostState_(host_state::HOST_STATE_RUNNING),
+      currentChassisPowerState_(host_state::CHASSIS_POWER_STATE_ON),
       redisPublisher_(std::make_unique<RedisStatePublisher>()),
-      actionTimer_(std::make_unique<boost::asio::steady_timer>(io))
+      actionTimer_(std::make_unique<boost::asio::steady_timer>(io)),
+      commandTimer_(std::make_unique<boost::asio::steady_timer>(io))
 {
     // Connect to Redis STATE_DB
     LOG_INFO("StateManager: Connecting to Redis STATE_DB...");
@@ -60,61 +61,70 @@ StateManager::StateManager(sdbusplus::asio::object_server& server,
     }
 }
 
+void StateManager::initializeFromDb()
+{
+    std::optional<HostStateInfo> info;
+    if (redisAdapter_)
+    {
+        info = redisAdapter_->getHostState();
+    }
+
+    if (!info)
+    {
+        LOG_WARNING("StateManager: %s not present in STATE_DB, "
+                    "assuming Switch-Host is %s until bmcctld reports",
+                    host_state::KEY_HOST_STATE.data(), currentHostState_.c_str());
+        return;
+    }
+
+    auto mapped = host_state::mapHostState(info->devicePowerState,
+                                           info->deviceStatus);
+    if (!mapped)
+    {
+        LOG_WARNING("StateManager: unrecognised %s (device_power_state=%s, "
+                    "device_status=%s), keeping %s",
+                    host_state::KEY_HOST_STATE.data(),
+                    info->devicePowerState.c_str(), info->deviceStatus.c_str(),
+                    currentHostState_.c_str());
+        return;
+    }
+
+    currentHostState_ = std::string(*mapped);
+    currentChassisPowerState_ =
+        std::string(host_state::hostStateToChassisPowerState(*mapped));
+
+    LOG_NOTICE("Switch-Host initial state: device_power_state=%s "
+               "device_status=%s -> %s",
+               info->devicePowerState.c_str(), info->deviceStatus.c_str(),
+               currentHostState_.c_str());
+}
+
 bool StateManager::createStateObjects()
 {
     LOG_INFO( "Creating state objects...");
 
+    initializeFromDb();
+
     try
     {
-        // Create xyz.openbmc_project.State.Host interface
+        // xyz.openbmc_project.State.Host on host0
         hostStateIface_ = server_.add_interface(OBJ_PATH_HOST, IFACE_STATE_HOST);
 
-        // Register RequestedHostTransition property (read-write)
         hostStateIface_->register_property_rw<std::string>(
             "RequestedHostTransition",
             sdbusplus::vtable::property_::emits_change,
             [this](const std::string& newValue, const auto&) {
-                // Property setter callback
-                LOG_INFO( "=== Property Change Detected ===");
-                LOG_INFO( "RequestedHostTransition = %s", newValue.c_str());
-
-                // Validate transition value
-                if (!isValidTransition(newValue))
-                {
-                    LOG_ERROR( "Invalid transition value: %s", newValue.c_str());
-                    throw std::invalid_argument("Invalid transition value");
-                }
-
-                // Check queue overflow
-                if (actionQueue_.size() >= MAX_QUEUE_SIZE)
-                {
-                    LOG_ERROR( "Action queue full (size: %zu), rejecting request",
-                           actionQueue_.size());
-                    throw std::runtime_error("Action queue full");
-                }
-
-                // Store last requested transition
-                lastRequestedTransition_ = newValue;
-
-                // Queue action for async execution
-                ActionRequest request;
-                request.transition = newValue;
-                request.timestamp = std::chrono::steady_clock::now();
-                actionQueue_.push(request);
-
-                LOG_INFO( "Action queued (queue size: %zu)", actionQueue_.size());
-
-                // Trigger async processing
-                processNextAction();
-
-                return 1; // Success
+                LOG_NOTICE("Switch-Host power request: RequestedHostTransition=%s "
+                           "(current host state: %s)",
+                           newValue.c_str(), currentHostState_.c_str());
+                queueTransition(newValue);
+                lastRequestedHostTransition_ = newValue;
+                return 1;
             },
             [this](const auto&) {
-                // Property getter callback
-                return lastRequestedTransition_;
+                return lastRequestedHostTransition_;
             });
 
-        // Register CurrentHostState property (read-only)
         hostStateIface_->register_property_r<std::string>(
             "CurrentHostState",
             sdbusplus::vtable::property_::emits_change,
@@ -122,10 +132,50 @@ bool StateManager::createStateObjects()
                 return currentHostState_;
             });
 
-        // Initialize the interface
+        // Advertised to bmcweb for ResetType@Redfish.AllowableValues
+        std::vector<std::string> allowedHostTransitions = {
+            std::string(host_state::HOST_TRANSITION_ON),
+            std::string(host_state::HOST_TRANSITION_OFF),
+        };
+        hostStateIface_->register_property_r<std::vector<std::string>>(
+            "AllowedHostTransitions",
+            sdbusplus::vtable::property_::const_,
+            [allowedHostTransitions](const auto&) {
+                return allowedHostTransitions;
+            });
+
         hostStateIface_->initialize();
 
+        // xyz.openbmc_project.State.Chassis on chassis0 (ForceOff path)
+        chassisStateIface_ =
+            server_.add_interface(OBJ_PATH_CHASSIS, IFACE_STATE_CHASSIS);
+
+        chassisStateIface_->register_property_rw<std::string>(
+            "RequestedPowerTransition",
+            sdbusplus::vtable::property_::emits_change,
+            [this](const std::string& newValue, const auto&) {
+                LOG_NOTICE("Switch-Host power request: RequestedPowerTransition=%s "
+                           "(current host state: %s)",
+                           newValue.c_str(), currentHostState_.c_str());
+                queueTransition(newValue);
+                lastRequestedChassisTransition_ = newValue;
+                return 1;
+            },
+            [this](const auto&) {
+                return lastRequestedChassisTransition_;
+            });
+
+        chassisStateIface_->register_property_r<std::string>(
+            "CurrentPowerState",
+            sdbusplus::vtable::property_::emits_change,
+            [this](const auto&) {
+                return currentChassisPowerState_;
+            });
+
+        chassisStateIface_->initialize();
+
         LOG_INFO( "Created state object at %s", OBJ_PATH_HOST);
+        LOG_INFO( "Created state object at %s", OBJ_PATH_CHASSIS);
         LOG_INFO( "Initial state: %s", currentHostState_.c_str());
         return true;
     }
@@ -136,33 +186,52 @@ bool StateManager::createStateObjects()
     }
 }
 
+void StateManager::queueTransition(const std::string& transition)
+{
+    if (!host_state::transitionToCommand(transition))
+    {
+        LOG_ERROR( "Invalid transition value: %s", transition.c_str());
+        throw std::invalid_argument("Invalid transition value");
+    }
+
+    if (actionQueue_.size() >= MAX_QUEUE_SIZE)
+    {
+        LOG_ERROR( "Action queue full (size: %zu), rejecting request",
+               actionQueue_.size());
+        throw std::runtime_error("Action queue full");
+    }
+
+    ActionRequest request;
+    request.transition = transition;
+    request.timestamp = std::chrono::steady_clock::now();
+    actionQueue_.push(request);
+
+    LOG_INFO( "Action queued (queue size: %zu)", actionQueue_.size());
+
+    processNextAction();
+}
+
 void StateManager::processNextAction()
 {
-    // Check if action already in progress
     if (actionInProgress_)
     {
-        LOG_DEBUG( "Action already in progress, waiting...");
+        LOG_DEBUG( "Action already in progress (pending %s), waiting...",
+                   pendingCommandId_.c_str());
         return;
     }
 
-    // Check if queue is empty
     if (actionQueue_.empty())
     {
         return;
     }
 
-    // Mark action as in progress
     actionInProgress_ = true;
 
-    // Get next action from queue
     ActionRequest action = actionQueue_.front();
     actionQueue_.pop();
 
     LOG_INFO( "Processing action: %s (remaining in queue: %zu)",
            action.transition.c_str(), actionQueue_.size());
-
-    // Update state to transitioning
-    updateHostState(HOST_STATE_TRANSITIONING);
 
     // Schedule async execution using timer (non-blocking)
     actionTimer_->expires_after(std::chrono::milliseconds(EXEC_DELAY_MS));
@@ -179,118 +248,190 @@ void StateManager::processNextAction()
         {
             LOG_ERROR( "Action timer error: %s", ec.message().c_str());
             actionInProgress_ = false;
-            updateHostState(HOST_STATE_RUNNING);
-            processNextAction(); // Try next action
+            processNextAction();
             return;
         }
 
-        // Execute the transition
-        executeHostTransition(transition);
-
-        // Mark action as complete
-        actionInProgress_ = false;
-
-        // Process next action in queue
-        processNextAction();
+        // The slot stays busy until bmcctld reports DONE / FAILED (or the
+        // command times out). See handleCommandStatus().
+        if (!executeHostTransition(transition))
+        {
+            actionInProgress_ = false;
+            processNextAction();
+        }
     });
 }
 
-void StateManager::executeHostTransition(const std::string& transition)
+bool StateManager::executeHostTransition(const std::string& transition)
 {
     LOG_INFO("=== Executing Host Transition ===");
     LOG_INFO("Transition: %s", transition.c_str());
 
-    // Check if Redis publisher is connected
     if (!redisPublisher_ || !redisPublisher_->isConnected())
     {
-        LOG_ERROR("Redis publisher not connected, cannot publish transition");
-        updateHostState(HOST_STATE_RUNNING);
-        return;
+        LOG_ERROR("Redis publisher not connected, cannot publish transition %s",
+                  transition.c_str());
+        return false;
     }
 
-    std::string command = transitionToScriptCommand(transition);
-    if (command.empty())
+    auto command = host_state::transitionToCommand(transition);
+    if (!command)
     {
-        LOG_ERROR("Failed to map transition to command");
-        updateHostState(HOST_STATE_RUNNING);
-        return;
+        LOG_ERROR("Failed to map transition %s to command", transition.c_str());
+        return false;
     }
 
-    // Publish to Redis STATE_DB
-    LOG_INFO("Publishing command '%s' to RACK_MANAGER_COMMAND...", command.c_str());
-    std::string commandId = redisPublisher_->publishHostRequest(command);
+    std::string commandStr(*command);
+    LOG_INFO("Publishing command '%s' to RACK_MANAGER_COMMAND...", commandStr.c_str());
+    std::string commandId = redisPublisher_->publishHostRequest(commandStr);
 
     if (commandId.empty())
     {
-        LOG_ERROR("Failed to publish RACK_MANAGER_COMMAND to Redis");
-        updateHostState(HOST_STATE_RUNNING);
+        LOG_ERROR("Failed to publish RACK_MANAGER_COMMAND (%s) to Redis",
+                  commandStr.c_str());
+        return false;
+    }
+
+    LOG_NOTICE("Rack manager command %s|%s published: command=%s transition=%s "
+               "(current host state: %s)",
+               host_state::TABLE_RACK_MANAGER_COMMAND.data(), commandId.c_str(),
+               commandStr.c_str(), transition.c_str(), currentHostState_.c_str());
+
+    pendingCommandId_ = commandId;
+    pendingCommand_ = commandStr;
+
+    commandTimer_->expires_after(COMMAND_TIMEOUT);
+    commandTimer_->async_wait(
+        [this, commandId](const boost::system::error_code& ec) {
+            if (ec == boost::asio::error::operation_aborted)
+            {
+                return;
+            }
+            onCommandTimeout(commandId);
+        });
+
+    return true;
+}
+
+void StateManager::onHostStateChanged(const HostStateInfo& info)
+{
+    boost::asio::post(io_, [this, info]() { applyHostState(info); });
+}
+
+void StateManager::onCommandStatusChanged(const RackManagerCommandInfo& info)
+{
+    boost::asio::post(io_, [this, info]() { handleCommandStatus(info); });
+}
+
+void StateManager::applyHostState(const HostStateInfo& info)
+{
+    auto mapped = host_state::mapHostState(info.devicePowerState,
+                                           info.deviceStatus);
+    if (!mapped)
+    {
+        LOG_WARNING("Unrecognised %s update (device_power_state=%s, "
+                    "device_status=%s), keeping %s",
+                    host_state::KEY_HOST_STATE.data(),
+                    info.devicePowerState.c_str(), info.deviceStatus.c_str(),
+                    currentHostState_.c_str());
         return;
     }
 
-    LOG_INFO("RACK_MANAGER_COMMAND|%s published successfully", commandId.c_str());
+    LOG_INFO("Switch-Host state update: device_power_state=%s device_status=%s "
+             "last_change=%s -> %s",
+             info.devicePowerState.c_str(), info.deviceStatus.c_str(),
+             info.lastChangeTimestamp.c_str(), mapped->data());
 
-    // Update state based on transition
-    if (transition == HOST_TRANS_OFF)
+    updateHostState(std::string(*mapped));
+}
+
+void StateManager::handleCommandStatus(const RackManagerCommandInfo& info)
+{
+    if (info.commandId != pendingCommandId_)
     {
-        updateHostState(HOST_STATE_OFF);
+        LOG_DEBUG("Ignoring %s|%s update (status=%s), not the pending command",
+                  host_state::TABLE_RACK_MANAGER_COMMAND.data(),
+                  info.commandId.c_str(), info.status.c_str());
+        return;
+    }
+
+    LOG_INFO("Rack manager command %s status: %s (command=%s result=%s)",
+             info.commandId.c_str(), info.status.c_str(),
+             info.command.c_str(), info.result.c_str());
+
+    if (!host_state::isTerminalCommandStatus(info.status))
+    {
+        return;
+    }
+
+    if (info.status == host_state::CMD_STATUS_DONE)
+    {
+        LOG_NOTICE("Rack manager command %s (%s) completed: %s",
+                   info.commandId.c_str(), info.command.c_str(),
+                   info.result.c_str());
     }
     else
     {
-        updateHostState(HOST_STATE_RUNNING);
+        LOG_ERROR("Rack manager command %s (%s) failed: %s",
+                  info.commandId.c_str(), info.command.c_str(),
+                  info.result.empty() ? "no result reported" : info.result.c_str());
     }
+
+    completePendingCommand();
 }
 
+void StateManager::onCommandTimeout(const std::string& commandId)
+{
+    if (commandId != pendingCommandId_)
+    {
+        return;
+    }
+
+    LOG_ERROR("Rack manager command %s (%s) did not reach DONE/FAILED within "
+              "%llds, releasing action slot",
+              commandId.c_str(), pendingCommand_.c_str(),
+              static_cast<long long>(COMMAND_TIMEOUT.count()));
+
+    completePendingCommand();
+}
+
+void StateManager::completePendingCommand()
+{
+    commandTimer_->cancel();
+    pendingCommandId_.clear();
+    pendingCommand_.clear();
+    actionInProgress_ = false;
+    processNextAction();
+}
 
 void StateManager::updateHostState(const std::string& newState)
 {
     if (currentHostState_ == newState)
     {
-        return; // No change
+        LOG_DEBUG("Host state unchanged (%s)", newState.c_str());
+        return;
     }
 
-    LOG_INFO( "=== State Change ===");
-    LOG_INFO( "Old state: %s", currentHostState_.c_str());
-    LOG_INFO( "New state: %s", newState.c_str());
+    LOG_NOTICE("Switch-Host state change: %s -> %s",
+               currentHostState_.c_str(), newState.c_str());
 
     currentHostState_ = newState;
 
-    // Emit PropertiesChanged signal
     if (hostStateIface_)
     {
         hostStateIface_->signal_property("CurrentHostState");
     }
-}
 
-std::string StateManager::transitionToScriptCommand(const std::string& transition)
-{
-    if (transition == HOST_TRANS_ON)
+    std::string chassisPowerState(
+        host_state::hostStateToChassisPowerState(newState));
+    if (chassisPowerState != currentChassisPowerState_)
     {
-        return "POWER_ON";
+        currentChassisPowerState_ = chassisPowerState;
+        if (chassisStateIface_)
+        {
+            chassisStateIface_->signal_property("CurrentPowerState");
+        }
     }
-    else if (transition == HOST_TRANS_OFF)
-    {
-        return "POWER_OFF";
-    }
-    else if (transition == HOST_TRANS_REBOOT ||
-             transition == HOST_TRANS_POWER_CYCLE ||
-             transition == HOST_TRANS_FORCE_WARM_REBOOT)
-    {
-        return "POWER_CYCLE";
-    }
-    else
-    {
-        LOG_ERROR( "Unknown transition: %s", transition.c_str());
-        return "";
-    }
-}
-
-bool StateManager::isValidTransition(const std::string& transition)
-{
-    return transition == HOST_TRANS_ON ||
-           transition == HOST_TRANS_OFF ||
-           transition == HOST_TRANS_REBOOT ||
-           transition == HOST_TRANS_FORCE_WARM_REBOOT ||
-           transition == HOST_TRANS_POWER_CYCLE;
 }
 
 } // namespace sonic::dbus_bridge

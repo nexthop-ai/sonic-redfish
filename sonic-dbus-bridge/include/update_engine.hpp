@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -12,6 +13,7 @@
 #include "types.hpp"
 #include "redis_adapter.hpp"
 #include "dbus_exporter.hpp"
+#include "state_manager.hpp"
 #include <boost/asio/steady_timer.hpp>
 #include <memory>
 #include <functional>
@@ -65,12 +67,24 @@ class UpdateEngine
     }
 
     /**
+     * @brief Attach the StateManager that owns State.Host / State.Chassis
+     *
+     * HOST_STATE|switch-host and RACK_MANAGER_COMMAND|* changes are
+     * forwarded to it.
+     */
+    void setStateManager(std::shared_ptr<StateManager> stateManager)
+    {
+        stateManager_ = std::move(stateManager);
+    }
+
+    /**
      * @brief Handle Redis field change event (event-driven)
      *
      * Called by RedisStateSubscriber when a Redis key changes.
      * Updates only the affected D-Bus properties.
      *
-     * @param key Redis key that changed (e.g., "DEVICE_METADATA", "CHASSIS_STATE")
+     * @param key Redis key that changed (e.g., "DEVICE_METADATA", "CHASSIS_STATE",
+     *            "HOST_STATE|switch-host", "RACK_MANAGER_COMMAND|CMD_...")
      * @param field Redis field that changed (e.g., "serial_number", "power_state")
      * @param value New value of the field
      */
@@ -82,6 +96,7 @@ class UpdateEngine
     boost::asio::io_context& io_;
     std::shared_ptr<RedisAdapter> redisAdapter_;
     std::shared_ptr<DBusExporter> dbusExporter_;
+    std::shared_ptr<StateManager> stateManager_;
     int pollIntervalSec_;
     boost::asio::steady_timer timer_;
     bool running_{false};
