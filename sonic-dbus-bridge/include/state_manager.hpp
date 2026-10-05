@@ -138,7 +138,10 @@ class StateManager
      * @brief Validate and enqueue a transition requested over D-Bus
      *
      * @param transition D-Bus Host or Chassis transition value
-     * @throws std::invalid_argument / std::runtime_error (mapped to a D-Bus error)
+     * @throws std::invalid_argument for an unknown transition value
+     *         (surfaces as org.freedesktop.DBus.Error.InvalidArgs)
+     * @throws xyz.openbmc_project.Common.Error.Unavailable when the action
+     *         queue is full (bmcweb reports 409 PropertyValueExternalConflict)
      */
     void queueTransition(const std::string& transition);
 

@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 //
@@ -114,9 +115,11 @@ static void onLeakDetectorPropertiesChanged(sdbusplus::message_t& msg)
         return;
     }
 
-    // Build origin URI -- use "BMC" as the chassis id for SONiC BMC
+    // Build origin URI. The chassis id must match the Chassis resource bmcweb
+    // serves for the bridge's /xyz/openbmc_project/inventory/system/chassis
+    // object, otherwise subscribers receive a URI this BMC does not serve.
     std::string originUri =
-        "/redfish/v1/Chassis/BMC/ThermalSubsystem/LeakDetection/LeakDetectors/" +
+        "/redfish/v1/Chassis/chassis/ThermalSubsystem/LeakDetection/LeakDetectors/" +
         sensorName;
 
     nlohmann::json::object_t eventMessage;

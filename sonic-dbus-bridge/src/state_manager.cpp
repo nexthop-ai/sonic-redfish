@@ -13,6 +13,7 @@
 #include "logger.hpp"
 #include "redis_state_publisher.hpp"
 #include <boost/asio/post.hpp>
+#include <sdbusplus/exception.hpp>
 #include <cstring>
 
 namespace sonic::dbus_bridge
@@ -20,6 +21,30 @@ namespace sonic::dbus_bridge
 
 namespace
 {
+
+// Thrown from the RequestedHostTransition / RequestedPowerTransition setters
+// when a Switch-Host command cannot be accepted right now. sdbusplus turns it
+// into the xyz.openbmc_project.Common.Error.Unavailable D-Bus error, which
+// bmcweb reports as 409 PropertyValueExternalConflict. A plain std::exception
+// would surface as org.freedesktop.DBus.Error.InvalidArgs and a 500.
+struct UnavailableError final : public sdbusplus::exception::generated_exception
+{
+    const char* name() const noexcept override
+    {
+        return "xyz.openbmc_project.Common.Error.Unavailable";
+    }
+
+    const char* description() const noexcept override
+    {
+        return "The service is temporarily unavailable.";
+    }
+
+    const char* what() const noexcept override
+    {
+        return "xyz.openbmc_project.Common.Error.Unavailable: "
+               "The service is temporarily unavailable.";
+    }
+};
 
 // D-Bus interface names
 constexpr const char* IFACE_STATE_HOST = "xyz.openbmc_project.State.Host";
@@ -196,9 +221,11 @@ void StateManager::queueTransition(const std::string& transition)
 
     if (actionQueue_.size() >= MAX_QUEUE_SIZE)
     {
-        LOG_ERROR( "Action queue full (size: %zu), rejecting request",
-               actionQueue_.size());
-        throw std::runtime_error("Action queue full");
+        // Client is sending faster than bmcctld completes commands. Not a
+        // bridge fault, so warn rather than error.
+        LOG_WARNING("Action queue full (size: %zu), rejecting request %s",
+                    actionQueue_.size(), transition.c_str());
+        throw UnavailableError();
     }
 
     ActionRequest request;
