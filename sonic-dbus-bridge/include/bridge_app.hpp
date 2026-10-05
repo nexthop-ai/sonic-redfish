@@ -4,6 +4,7 @@
 // Copyright (C) 2026 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -118,7 +119,7 @@ namespace sonic::dbus_bridge
             std::unique_ptr<sonic::user::UserMgr> userMgr_;
 
             // State management
-            std::unique_ptr<StateManager> stateManager_;
+            std::shared_ptr<StateManager> stateManager_;
 
             // Event-driven Redis subscriber
             std::unique_ptr<RedisStateSubscriber> redisSubscriber_;

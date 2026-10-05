@@ -85,6 +85,26 @@ class RedisAdapter
     ChassisState getChassisState();
 
     /**
+     * @brief Get Switch-Host state from STATE_DB
+     *
+     * Reads HOST_STATE|switch-host hash (owned by bmcctld).
+     *
+     * @return Host state if the key exists, nullopt otherwise
+     */
+    std::optional<HostStateInfo> getHostState();
+
+    /**
+     * @brief Get a rack manager command record from STATE_DB
+     *
+     * Reads RACK_MANAGER_COMMAND|<commandId> hash.
+     *
+     * @param commandId Command id (e.g., "CMD_1718000000_1")
+     * @return Command record if the key exists, nullopt otherwise
+     */
+    std::optional<RackManagerCommandInfo> getRackManagerCommand(
+        const std::string& commandId);
+
+    /**
      * @brief Get firmware versions from STATE_DB
      *
      * Reads BMC_FW_INVENTORY|* keys from STATE_DB on the switch
