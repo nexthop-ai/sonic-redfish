@@ -230,6 +230,10 @@ bool BridgeApp::connectDbus()
         }
         stateConn_ = std::make_shared<sdbusplus::asio::connection>(io_, bus);
         stateConn_->request_name(STATE_HOST_BUSNAME);
+        // bmcweb addresses chassis0 (ForceOff, Chassis PowerState) via the
+        // State.Chassis bus name, so serve it from the same connection.
+        LOG_INFO("Requesting D-Bus name: %s", STATE_CHASSIS_BUSNAME);
+        stateConn_->request_name(STATE_CHASSIS_BUSNAME);
         stateServer_ = std::make_unique<sdbusplus::asio::object_server>(stateConn_);
 
         // Rack Manager Receiver connection
@@ -419,7 +423,8 @@ void BridgeApp::createDbusObjects()
 void BridgeApp::createStateObjects()
 {
     // Use dedicated State.Host connection for state objects
-    stateManager_ = std::make_unique<StateManager>(*stateServer_, io_);
+    stateManager_ = std::make_shared<StateManager>(*stateServer_, io_,
+                                                   redisAdapter_);
 
     if (!stateManager_->createStateObjects())
     {
@@ -451,6 +456,9 @@ void BridgeApp::startUpdateEngine()
         LOG_INFO("Inventory updated");
     });
 
+    // HOST_STATE|switch-host / RACK_MANAGER_COMMAND|* -> State.Host
+    updateEngine_->setStateManager(stateManager_);
+
     updateEngine_->start();
 
     // Start event-driven Redis subscriber for multiple keys
@@ -462,7 +470,8 @@ void BridgeApp::startUpdateEngine()
     std::vector<std::string> keysToSubscribe = {
         "DEVICE_METADATA",        // Serial number, platform, hostname
         "CHASSIS_STATE",          // Power state
-        "HOST_STATE|switch-host"  // Host power state
+        "HOST_STATE|switch-host", // Host power state (bmcctld)
+        "RACK_MANAGER_COMMAND|*"  // Command results (bmcctld DONE/FAILED)
     };
 
     // Dynamically add leak sensor keys discovered at startup

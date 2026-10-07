@@ -1,0 +1,103 @@
+[
+  {
+    "name": "test_collection_returns_200",
+    "description": "Validates Systems collection returns 200",
+    "method": "GET",
+    "endpoint": "/redfish/v1/Systems/",
+    "expected_status": 200,
+    "expected_response": {
+      "@odata.type": "#ComputerSystemCollection.ComputerSystemCollection"
+    },
+    "validators": [
+      {
+        "type": "length_gte",
+        "path": "Members",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "name": "test_collection_lists_system",
+    "description": "The ComputerSystem the host power events use as OriginOfCondition is a member of the collection",
+    "method": "GET",
+    "endpoint": "/redfish/v1/Systems/",
+    "expected_status": 200,
+    "validators": [
+      {
+        "type": "contains_member",
+        "path": "Members",
+        "value": "/redfish/v1/Systems/system"
+      }
+    ]
+  },
+  {
+    "name": "test_system_returns_200",
+    "description": "GET of the ComputerSystem succeeds on SONiC even though the optional OpenBMC providers (xyz.openbmc_project.Settings, serial console socket units) are not on the bus",
+    "method": "GET",
+    "endpoint": "/redfish/v1/Systems/system",
+    "expected_status": 200,
+    "validators": [
+      {
+        "type": "contains",
+        "path": "@odata.type",
+        "value": "#ComputerSystem."
+      },
+      {
+        "type": "equals",
+        "path": "Id",
+        "value": "system"
+      }
+    ]
+  },
+  {
+    "name": "test_system_reports_power_state",
+    "description": "PowerState is present so a rack manager can read the host state after a ResourcePoweredOn/Off event",
+    "method": "GET",
+    "endpoint": "{{STATE.SYSTEM_URI}}",
+    "expected_status": 200,
+    "validators": [
+      {
+        "type": "exists",
+        "path": "PowerState"
+      },
+      {
+        "type": "not_equals",
+        "path": "PowerState",
+        "value": ""
+      }
+    ],
+    "prerequisite_calls": [
+      {
+        "endpoint": "/redfish/v1/Systems/",
+        "extract": {
+          "SYSTEM_URI": "Members[0].@odata.id"
+        }
+      }
+    ]
+  },
+  {
+    "name": "test_system_advertises_reset_action",
+    "description": "ComputerSystem.Reset is discoverable from the resource rather than only by a hard-coded URI",
+    "method": "GET",
+    "endpoint": "{{STATE.SYSTEM_URI}}",
+    "expected_status": 200,
+    "validators": [
+      {
+        "type": "exists",
+        "path": "Actions"
+      },
+      {
+        "type": "exists",
+        "path": "Status"
+      }
+    ],
+    "prerequisite_calls": [
+      {
+        "endpoint": "/redfish/v1/Systems/",
+        "extract": {
+          "SYSTEM_URI": "Members[0].@odata.id"
+        }
+      }
+    ]
+  }
+]

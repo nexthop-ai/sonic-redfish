@@ -1,0 +1,233 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Chinmoy Dey <chinmoy@nexthop.ai>
+Date: Fri, 02 Oct 2026 00:00:00 +0000
+Subject: [PATCH 8/8] Switch-Host power events and supported ResetTypes
+
+Wire the rmc-events host state monitor into bmcweb and restrict
+ComputerSystem.Reset to the ResetTypes backed by a rack-manager command:
+  - meson.build: add host_state_monitor.cpp to sources
+  - event_service_manager.hpp: include and instantiate the
+    DbusHostStateMonitor (CurrentHostState PropertiesChanged on
+    xyz.openbmc_project.State.Host host0 -> ResourceEvent
+    ResourcePoweredOn/Off, ResourcePoweringOn/Off with OriginOfCondition
+    /redfish/v1/Systems/system)
+  - event_service.hpp: add "ResourceEvent" registry prefix and
+    "ComputerSystem" resource type to the supported subscription filters
+  - systems.hpp: accept only On, ForceOff, GracefulShutdown and PowerCycle;
+    every other ResetType (ForceOn, ForceRestart, GracefulRestart, Nmi, ...)
+    returns ActionParameterNotSupported instead of being silently mapped
+    to a transition the Switch-Host cannot perform
+  - systems.hpp: getStopBootOnFault meant to ignore a missing
+    xyz.openbmc_project.Settings service (EBADR / EHOSTUNREACH) but the
+    condition was written with || so it is always true and every error
+    became 500 InternalError. SONiC has no Settings daemon, so GET
+    /redfish/v1/Systems/system always failed. Use && as the comment intends
+  - systems.hpp: afterPortRequest treats the systemd ListUnits / socket
+    Listen lookups behind SerialConsole as an optional provider. SONiC has
+    no systemd on the system bus, so the lookup fails with EIO and used to
+    turn an otherwise complete GET /redfish/v1/Systems/system into 500
+    InternalError. SerialConsole is now omitted instead
+  - dbus_utils.cpp: when the D-Bus service owning the property is not on
+    the bus (EHOSTUNREACH, i.e. sonic-dbus-bridge down), afterSetProperty
+    returns 503 ServiceTemporarilyUnavailable with Retry-After instead of
+    404 ResourceNotFound, so a POST ComputerSystem.Reset while the bridge
+    is restarting is reported as retryable
+
+The monitor implementation lives in rmc-events/ and is copied into the
+bmcweb tree by the build system before this patch is applied.
+---
+  meson.build                                    |  1 +
+  redfish-core/include/event_service_manager.hpp |  7 ++++++
+  redfish-core/lib/event_service.hpp             |  9 ++++----
+  redfish-core/lib/systems.hpp                   | 48 ++++++++++++++++++++-----------------
+  redfish-core/src/utils/dbus_utils.cpp          |  9 ++++++--
+  5 files changed, 48 insertions(+), 26 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index 8286b4b9..c8e7d4bb 100644
+--- a/meson.build
++++ b/meson.build
+@@ -391,6 +391,7 @@ srcfiles_bmcweb = files(
+     'redfish-core/src/filesystem_log_watcher.cpp',
+     'redfish-core/src/filter_expr_executor.cpp',
+     'redfish-core/src/leak_detector_monitor.cpp',
++    'redfish-core/src/host_state_monitor.cpp',
+     'redfish-core/src/filter_expr_printer.cpp',
+     'redfish-core/src/heartbeat_messages.cpp',
+     'redfish-core/src/redfish.cpp',
+diff --git a/redfish-core/include/event_service_manager.hpp b/redfish-core/include/event_service_manager.hpp
+index aec6dd23..186beee8 100644
+--- a/redfish-core/include/event_service_manager.hpp
++++ b/redfish-core/include/event_service_manager.hpp
+@@ -6,6 +6,7 @@
+
+ #include "dbus_log_watcher.hpp"
+ #include "error_messages.hpp"
++#include "host_state_monitor.hpp"
+ #include "leak_detector_monitor.hpp"
+ #include "event_logs_object_type.hpp"
+ #include "event_matches_filter.hpp"
+@@ -59,6 +60,7 @@ class EventServiceManager
+     std::optional<DbusTelemetryMonitor> matchTelemetryMonitor;
+     std::optional<FilesystemLogWatcher> filesystemLogMonitor;
+     std::optional<DbusLeakDetectorMonitor> leakDetectorMonitor;
++    std::optional<DbusHostStateMonitor> hostStateMonitor;
+     boost::container::flat_map<std::string, std::shared_ptr<Subscription>>
+         subscriptionsMap;
+
+@@ -89,6 +91,11 @@ class EventServiceManager
+         // PropertiesChanged signals on leak sensors are forwarded
+         // as Redfish events to matching subscribers via sendEvent().
+         leakDetectorMonitor.emplace();
++
++        // Forward Switch-Host CurrentHostState changes (State.Host on
++        // host0, mirrored from HOST_STATE|switch-host) as ResourceEvent
++        // power events for /redfish/v1/Systems/system.
++        hostStateMonitor.emplace();
+     }
+
+     static EventServiceManager& getInstance()
+diff --git a/redfish-core/lib/event_service.hpp b/redfish-core/lib/event_service.hpp
+index ed365315..41d7a7f0 100644
+--- a/redfish-core/lib/event_service.hpp
++++ b/redfish-core/lib/event_service.hpp
+@@ -48,13 +48,14 @@ namespace redfish
+
+ static constexpr const std::array<const char*, 2> supportedEvtFormatTypes = {
+     eventFormatType, metricReportFormatType};
+-static constexpr const std::array<const char*, 5> supportedRegPrefixes = {
+-    "Base", "OpenBMC", "TaskEvent", "HeartbeatEvent", "Environmental"};
++static constexpr const std::array<const char*, 6> supportedRegPrefixes = {
++    "Base",           "OpenBMC",       "TaskEvent",
++    "HeartbeatEvent", "Environmental", "ResourceEvent"};
+ static constexpr const std::array<const char*, 3> supportedRetryPolicies = {
+     "TerminateAfterRetries", "SuspendRetries", "RetryForever"};
+
+-static constexpr const std::array<const char*, 3> supportedResourceTypes = {
+-    "Task", "Heartbeat", "LeakDetector"};
++static constexpr const std::array<const char*, 4> supportedResourceTypes = {
++    "Task", "Heartbeat", "LeakDetector", "ComputerSystem"};
+
+ inline void requestRoutesEventService(App& app)
+ {
+diff --git a/redfish-core/lib/systems.hpp b/redfish-core/lib/systems.hpp
+index 3123f068..f76c5357 100644
+--- a/redfish-core/lib/systems.hpp
++++ b/redfish-core/lib/systems.hpp
+@@ -1351,7 +1351,7 @@ inline void getStopBootOnFault(
+             {
+                 // Service not available, no error, just don't return
+                 // StopBootOnFault information
+-                if (ec.value() != EBADR ||
++                if (ec.value() != EBADR &&
+                     ec.value() != boost::asio::error::host_unreachable)
+                 {
+                     BMCWEB_LOG_ERROR("DBUS response error {}", ec);
+@@ -2866,10 +2866,17 @@ inline void processComputerSystemResetActionPost(
+     const std::shared_ptr<bmcweb::AsyncResp>& asyncResp, std::string& resetType,
+     const uint64_t computerSystemIndex)
+ {
+-    // Get the command and host vs. chassis
++    // Get the command and host vs. chassis.
++    // The SONiC Switch-Host supports exactly the ResetTypes that map to a
++    // rack-manager command (sonic-dbus-bridge host_state_mapping.hpp):
++    //   On               -> Host.Transition.On      (POWER_ON)
++    //   ForceOff         -> Chassis.Transition.Off  (POWER_OFF)
++    //   GracefulShutdown -> Host.Transition.Off     (GRACEFUL_SHUT)
++    //   PowerCycle       -> Host.Transition.Reboot  (POWER_CYCLE)
++    // Every other ResetType is rejected with ActionParameterNotSupported.
+     std::string command;
+     bool hostCommand = true;
+-    if ((resetType == "On") || (resetType == "ForceOn"))
++    if (resetType == "On")
+     {
+         command = "xyz.openbmc_project.State.Host.Transition.On";
+         hostCommand = true;
+@@ -2879,30 +2886,24 @@ inline void processComputerSystemResetActionPost(
+         command = "xyz.openbmc_project.State.Chassis.Transition.Off";
+         hostCommand = false;
+     }
+-    else if (resetType == "ForceRestart")
+-    {
+-        command = "xyz.openbmc_project.State.Host.Transition.ForceWarmReboot";
+-        hostCommand = true;
+-    }
+     else if (resetType == "GracefulShutdown")
+     {
+         command = "xyz.openbmc_project.State.Host.Transition.Off";
+         hostCommand = true;
+     }
+-    else if (resetType == "GracefulRestart")
+-    {
+-        command =
+-            "xyz.openbmc_project.State.Host.Transition.GracefulWarmReboot";
+-        hostCommand = true;
+-    }
+     else if (resetType == "PowerCycle")
+     {
+         command = "xyz.openbmc_project.State.Host.Transition.Reboot";
+         hostCommand = true;
+     }
+-    else if (resetType == "Nmi")
++    else if ((resetType == "ForceOn") || (resetType == "ForceRestart") ||
++             (resetType == "GracefulRestart") || (resetType == "Nmi") ||
++             (resetType == "PushPowerButton") || (resetType == "Pause") ||
++             (resetType == "Resume") || (resetType == "Suspend") ||
++             (resetType == "FullPowerCycle"))
+     {
+-        doNMI(asyncResp);
++        messages::actionParameterNotSupported(asyncResp->res, "ResetType",
++                                              "Reset");
+         return;
+     }
+     else
+@@ -2991,8 +2992,13 @@ inline void afterPortRequest(
+ {
+     if (ec)
+     {
+-        BMCWEB_LOG_ERROR("DBUS response error {}", ec);
+-        messages::internalError(asyncResp->res);
++        // SerialConsole is populated from systemd socket units
++        // (obmc-console-ssh, phosphor-ipmi-net). On SONiC there is no
++        // systemd on the system bus, so treat this as an optional
++        // provider and omit SerialConsole rather than fail the whole
++        // ComputerSystem response.
++        BMCWEB_LOG_DEBUG("DBUS response error on serial console units {}",
++                         ec);
+         return;
+     }
+     for (const auto& data : socketData)
+@@ -3011,8 +3017,10 @@ inline void afterPortRequest(
+                                           int portNumber) {
+                 if (ec1)
+                 {
+-                    BMCWEB_LOG_ERROR("DBUS response error {}", ec1);
+-                    messages::internalError(asyncResp->res);
++                    // Optional, see above: leave SerialConsole.SSH without
++                    // a Port rather than fail the response.
++                    BMCWEB_LOG_DEBUG(
++                        "DBUS response error on serial console port {}", ec1);
+                     return;
+                 }
+                 nlohmann::json& dataJson1 =
+diff --git a/redfish-core/src/utils/dbus_utils.cpp b/redfish-core/src/utils/dbus_utils.cpp
+index 10000800..a1b2c3d4 100644
+--- a/redfish-core/src/utils/dbus_utils.cpp
++++ b/redfish-core/src/utils/dbus_utils.cpp
+@@ -37,8 +37,13 @@ void afterSetProperty(
+         }
+         if (ec.value() == boost::asio::error::host_unreachable)
+         {
+-            messages::resourceNotFound(asyncResp->res, "Set",
+-                                       redfishPropertyName);
++            // The D-Bus service that owns the property (on SONiC, the
++            // sonic-dbus-bridge) is not on the bus. The Redfish resource
++            // itself exists, so report a retryable 503 rather than 404.
++            BMCWEB_LOG_WARNING(
++                "D-Bus service unavailable while setting Redfish Property {}",
++                redfishPropertyName);
++            messages::serviceTemporarilyUnavailable(asyncResp->res, "10");
+             return;
+         }
+         const sd_bus_error* dbusError = msg.get_error();
+
