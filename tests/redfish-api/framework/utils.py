@@ -73,10 +73,19 @@ def assert_schema_conformance(obj, schema_file, definition):
 
 
 def extract_path(data, path):
-    """Simple JSONPath-like extractor. E.g., 'Members[0].@odata.id'"""
+    """Simple JSONPath-like extractor.
+
+    Dotted keys that Redfish uses as single property names are kept whole:
+      'Members[0].@odata.id'
+      'Actions.#ComputerSystem.Reset.target'
+      'Actions.#ComputerSystem.Reset.@Redfish.ActionInfo'
+      'Parameters[0].AllowableValues'
+    """
     if path == "$" or not path:
         return data
-    keys = re.findall(r"\w+@odata\.\w+|@odata\.\w+|[\w]+|\[\d+\]", path)
+    keys = re.findall(
+        r"#\w+\.\w+|\w+@odata\.\w+|@odata\.\w+|@Redfish\.\w+|[\w]+|\[\d+\]",
+        path)
     current = data
     for k in keys:
         if k.startswith("[") and k.endswith("]"):
