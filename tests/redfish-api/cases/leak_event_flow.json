@@ -21,12 +21,12 @@
       }
     ],
     "expect_event": {
-      "description": "Within 15s, an event for leak_sensor_1 (LeakDetectedCritical, severity Critical) must arrive.",
+      "description": "Within 15s, an event for leak_sensor_1 (LeakDetectedCritical, severity Critical) must arrive. OriginOfCondition must point at the LeakDetector under the Chassis this BMC actually serves (/redfish/v1/Chassis/chassis).",
       "timeout_seconds": 15,
       "validators": [
         {"type": "equals", "path": "Events[0].MessageId", "value": "Environmental.1.1.0.LeakDetectedCritical"},
         {"type": "equals", "path": "Events[0].Severity", "value": "Critical"},
-        {"type": "exists", "path": "Events[0].OriginOfCondition.@odata.id"}
+        {"type": "equals", "path": "Events[0].OriginOfCondition.@odata.id", "value": "/redfish/v1/Chassis/chassis/ThermalSubsystem/LeakDetection/LeakDetectors/leak_sensor_1"}
       ]
     },
     "teardown": {

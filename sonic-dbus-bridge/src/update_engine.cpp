@@ -9,6 +9,7 @@
 ///////////////////////////////////////
 
 #include "update_engine.hpp"
+#include "host_state_mapping.hpp"
 #include "inventory_model.hpp"
 #include "logger.hpp"
 
@@ -184,9 +185,65 @@ void UpdateEngine::onRedisFieldChange(const std::string& key,
                 needsUpdate = true;
             }
         }
-        else if (key == "HOST_STATE|switch-host")
+        // Handle HOST_STATE|switch-host changes (bmcctld -> State.Host)
+        else if (key == host_state::KEY_HOST_STATE)
         {
-            LOG_DEBUG("[UpdateEngine] HOST_STATE|switch-host changed (not currently mapped to D-Bus)");
+            // The subscriber fans out one callback per hash field, so the
+            // whole hash is re-read once per notification.
+            if (field != host_state::FIELD_DEVICE_POWER_STATE)
+            {
+                return;
+            }
+
+            auto hostState = redisAdapter_->getHostState();
+            if (!hostState)
+            {
+                LOG_WARNING("[UpdateEngine] %s not found in Redis", key.c_str());
+                return;
+            }
+
+            if (!stateManager_)
+            {
+                LOG_WARNING("[UpdateEngine] %s changed but no StateManager attached",
+                            key.c_str());
+                return;
+            }
+
+            LOG_INFO("[UpdateEngine] %s changed: device_power_state=%s device_status=%s",
+                     key.c_str(), hostState->devicePowerState.c_str(),
+                     hostState->deviceStatus.c_str());
+            stateManager_->onHostStateChanged(*hostState);
+            return;
+        }
+        // Handle RACK_MANAGER_COMMAND|<id> changes (bmcctld command results)
+        else if (key.starts_with(std::string(host_state::TABLE_RACK_MANAGER_COMMAND) + "|"))
+        {
+            if (field != host_state::FIELD_STATUS)
+            {
+                return;
+            }
+
+            std::string commandId =
+                key.substr(host_state::TABLE_RACK_MANAGER_COMMAND.size() + 1);
+            auto command = redisAdapter_->getRackManagerCommand(commandId);
+            if (!command)
+            {
+                LOG_WARNING("[UpdateEngine] %s not found in Redis", key.c_str());
+                return;
+            }
+
+            if (!stateManager_)
+            {
+                LOG_WARNING("[UpdateEngine] %s changed but no StateManager attached",
+                            key.c_str());
+                return;
+            }
+
+            LOG_INFO("[UpdateEngine] %s changed: command=%s status=%s result=%s",
+                     key.c_str(), command->command.c_str(),
+                     command->status.c_str(), command->result.c_str());
+            stateManager_->onCommandStatusChanged(*command);
+            return;
         }
         // Handle LIQUID_COOLING_INFO|<name> changes
         else if (key.starts_with("LIQUID_COOLING_INFO|"))

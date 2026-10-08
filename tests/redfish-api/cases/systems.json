@@ -1,0 +1,185 @@
+[
+  {
+    "name": "test_collection_returns_200",
+    "description": "Validates Systems collection returns 200",
+    "method": "GET",
+    "endpoint": "/redfish/v1/Systems/",
+    "expected_status": 200,
+    "expected_response": {
+      "@odata.type": "#ComputerSystemCollection.ComputerSystemCollection"
+    },
+    "validators": [
+      {
+        "type": "length_gte",
+        "path": "Members",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "name": "test_collection_lists_system",
+    "description": "The ComputerSystem the host power events use as OriginOfCondition is a member of the collection",
+    "method": "GET",
+    "endpoint": "/redfish/v1/Systems/",
+    "expected_status": 200,
+    "validators": [
+      {
+        "type": "contains_member",
+        "path": "Members",
+        "value": "/redfish/v1/Systems/system"
+      }
+    ]
+  },
+  {
+    "name": "test_system_returns_200",
+    "description": "GET of the ComputerSystem succeeds on SONiC even though the optional OpenBMC providers (xyz.openbmc_project.Settings, serial console socket units) are not on the bus",
+    "method": "GET",
+    "endpoint": "/redfish/v1/Systems/system",
+    "expected_status": 200,
+    "validators": [
+      {
+        "type": "contains",
+        "path": "@odata.type",
+        "value": "#ComputerSystem."
+      },
+      {
+        "type": "equals",
+        "path": "Id",
+        "value": "system"
+      }
+    ]
+  },
+  {
+    "name": "test_system_reports_power_state",
+    "description": "PowerState is present so a rack manager can read the host state after a ResourcePoweredOn/Off event",
+    "method": "GET",
+    "endpoint": "{{STATE.SYSTEM_URI}}",
+    "expected_status": 200,
+    "validators": [
+      {
+        "type": "exists",
+        "path": "PowerState"
+      },
+      {
+        "type": "not_equals",
+        "path": "PowerState",
+        "value": ""
+      }
+    ],
+    "prerequisite_calls": [
+      {
+        "endpoint": "/redfish/v1/Systems/",
+        "extract": {
+          "SYSTEM_URI": "Members[0].@odata.id"
+        }
+      }
+    ]
+  },
+  {
+    "name": "test_system_advertises_reset_action",
+    "description": "ComputerSystem.Reset is discoverable from the resource rather than only by a hard-coded URI",
+    "method": "GET",
+    "endpoint": "{{STATE.SYSTEM_URI}}",
+    "expected_status": 200,
+    "validators": [
+      {
+        "type": "equals",
+        "path": "Actions.#ComputerSystem.Reset.target",
+        "value": "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset"
+      },
+      {
+        "type": "equals",
+        "path": "Actions.#ComputerSystem.Reset.@Redfish.ActionInfo",
+        "value": "/redfish/v1/Systems/system/ResetActionInfo"
+      }
+    ],
+    "prerequisite_calls": [
+      {
+        "endpoint": "/redfish/v1/Systems/",
+        "extract": {
+          "SYSTEM_URI": "Members[0].@odata.id"
+        }
+      }
+    ]
+  },
+  {
+    "name": "test_reset_action_info_matches_accepted_reset_types",
+    "description": "ResetActionInfo advertises exactly the ResetTypes the POST path accepts (the four backed by a RACK_MANAGER_COMMAND); Nmi and ForceOn must not be offered",
+    "method": "GET",
+    "endpoint": "/redfish/v1/Systems/system/ResetActionInfo",
+    "expected_status": 200,
+    "expected_response": {
+      "Id": "ResetActionInfo"
+    },
+    "validators": [
+      {
+        "type": "equals",
+        "path": "Parameters[0].Name",
+        "value": "ResetType"
+      },
+      {
+        "type": "equals",
+        "path": "Parameters[0].AllowableValues",
+        "value": ["ForceOff", "PowerCycle", "On", "GracefulShutdown"]
+      }
+    ]
+  },
+  {
+    "name": "test_reset_on_accepted",
+    "description": "HLD ResetType On (POWER_ON) is accepted: bmcweb maps it to Host.Transition.On and the bridge queues it",
+    "method": "POST",
+    "endpoint": "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset",
+    "body": { "ResetType": "On" },
+    "expected_status": 204
+  },
+  {
+    "name": "test_reset_force_off_accepted",
+    "description": "HLD ResetType ForceOff (POWER_OFF) is accepted: bmcweb maps it to Chassis.Transition.Off and the bridge queues it",
+    "method": "POST",
+    "endpoint": "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset",
+    "body": { "ResetType": "ForceOff" },
+    "expected_status": 204
+  },
+  {
+    "name": "test_reset_graceful_shutdown_accepted",
+    "description": "HLD ResetType GracefulShutdown (GRACEFUL_SHUT) is accepted: bmcweb maps it to Host.Transition.Off and the bridge queues it",
+    "method": "POST",
+    "endpoint": "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset",
+    "body": { "ResetType": "GracefulShutdown" },
+    "expected_status": 204
+  },
+  {
+    "name": "test_reset_power_cycle_accepted",
+    "description": "HLD ResetType PowerCycle (POWER_CYCLE) is accepted: bmcweb maps it to Host.Transition.Reboot and the bridge queues it",
+    "method": "POST",
+    "endpoint": "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset",
+    "body": { "ResetType": "PowerCycle" },
+    "expected_status": 204
+  },
+  {
+    "name": "test_reset_force_restart_not_supported",
+    "description": "ForceRestart is a valid Redfish ResetType but is not in the HLD list, so it is rejected with ActionParameterNotSupported instead of being forwarded to the bridge",
+    "method": "POST",
+    "endpoint": "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset",
+    "body": { "ResetType": "ForceRestart" },
+    "expected_status": 400,
+    "expected_response": {
+      "error": {
+        "code": "Base.1.19.ActionParameterNotSupported"
+      }
+    }
+  },
+  {
+    "name": "test_reset_unknown_type_rejected",
+    "description": "A ResetType outside the Redfish enum is rejected with ActionParameterUnknown",
+    "method": "POST",
+    "endpoint": "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset",
+    "body": { "ResetType": "Bogus" },
+    "expected_status": 400,
+    "expected_response": {
+      "error": {
+        "code": "Base.1.19.ActionParameterUnknown"
+      }
+    }
+  }
+]
