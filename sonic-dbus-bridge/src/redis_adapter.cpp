@@ -279,6 +279,57 @@ std::map<std::string, std::string> RedisAdapter::hgetall(redisContext* ctx,
     return result;
 }
 
+std::optional<std::string> RedisAdapter::getRedfishClientCnames()
+{
+    // Read directly rather than through hget(), which cannot distinguish a
+    // field that is not set from a read that failed. That difference decides
+    // whether client certificates are accepted, so it must not be lost.
+    if (!configDbContext_)
+    {
+        // Not connected at startup, or dropped after an I/O error below.
+        configDbContext_ = connectToDb(configDbHost_, configDbPort_, 4);
+        if (!configDbContext_)
+        {
+            return std::nullopt;
+        }
+    }
+
+    redisReply* reply = static_cast<redisReply*>(
+        redisCommand(configDbContext_, "HGET %s %s", "REDFISH|certs",
+                     "client_crt_cname"));
+    if (!reply)
+    {
+        // hiredis leaves the context unusable after an I/O error, so drop it
+        // and reconnect on the next read.
+        LOG_WARNING("CONFIG_DB read of client_crt_cname failed: %s",
+                    configDbContext_->errstr);
+        redisFree(configDbContext_);
+        configDbContext_ = nullptr;
+        return std::nullopt;
+    }
+
+    std::optional<std::string> result;
+    if (reply->type == REDIS_REPLY_STRING)
+    {
+        result = std::string(reply->str, reply->len);
+    }
+    else if (reply->type == REDIS_REPLY_NIL)
+    {
+        result = std::string(); // readable, field not set
+    }
+    else
+    {
+        // An error reply (e.g. LOADING while Redis starts) is a failed read,
+        // not an unset field.
+        LOG_WARNING("CONFIG_DB read of client_crt_cname failed: %s",
+                    reply->type == REDIS_REPLY_ERROR ? reply->str
+                                                     : "unexpected reply type");
+    }
+
+    freeReplyObject(reply);
+    return result;
+}
+
 std::optional<std::string> RedisAdapter::hget(redisContext* ctx,
                                                const std::string& key,
                                                const std::string& field)
