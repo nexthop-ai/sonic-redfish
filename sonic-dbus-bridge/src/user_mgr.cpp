@@ -111,11 +111,6 @@ UserMgr::UserMgr(sdbusplus::asio::object_server& server, const char* path,
     userMgrIface->initialize();
 
     initUserObjects();
-
-    // Read the trusted common names up front. A failure here is not fatal:
-    // the read is retried on the first request that needs it, and requests
-    // are refused until it succeeds.
-    loadTrustedCnames();
 }
 
 
@@ -124,8 +119,10 @@ void UserMgr::initUserObjects(void)
 {
     // Create the D-Bus object for the virtual Redfish identity
     // unconditionally. There is no Unix account behind it (nothing in
-    // /etc/passwd is consulted), so this cannot fail: authentication is mTLS
-    // (the client certificate is the credential) and enabled is always true.
+    // /etc/passwd is consulted), so this cannot fail. The object is for
+    // display only (AccountService lists it): its privilege and enabled flag
+    // grant nothing. Access is decided per request by GetUserInfo, from the
+    // common name in the client certificate.
 
     std::string userName = redfishIdentityName;
     std::string userPriv = "priv-admin";
@@ -144,33 +141,6 @@ void UserMgr::initUserObjects(void)
              userName.c_str(), objPath.c_str());
 }
 
-bool UserMgr::loadTrustedCnames()
-{
-    if (!redisAdapter_)
-    {
-        return false;
-    }
-
-    const std::optional<std::string> read = redisAdapter_->getRedfishClientCnames();
-    if (!read)
-    {
-        return false; // CONFIG_DB unreadable; retried on the next request
-    }
-
-    cachedCnames_ = *read;
-    haveCachedCnames_ = true;
-    if (trim(cachedCnames_).empty())
-    {
-        LOG_WARNING("No trusted client common names configured; every client "
-                    "certificate is refused until client_crt_cname is set");
-    }
-    else
-    {
-        LOG_INFO("Trusted client common names: %s", cachedCnames_.c_str());
-    }
-    return true;
-}
-
 bool UserMgr::isCommonNameTrusted(const std::string& commonName)
 {
     if (!redisAdapter_)
@@ -182,20 +152,21 @@ bool UserMgr::isCommonNameTrusted(const std::string& commonName)
         return false;
     }
 
-    // The list is read once and then held for the lifetime of the process,
-    // as the SONiC REST API server does with its own trusted common names.
-    // Changing it therefore takes effect when this service restarts.
-    if (!haveCachedCnames_ && !loadTrustedCnames())
+    // Read on every request, so adding or removing a name takes effect
+    // without restarting this service.
+    const std::optional<std::string> read =
+        redisAdapter_->getRedfishClientCnames();
+    if (!read)
     {
-        // The policy is not known and cannot be read, so refuse rather than
-        // drop the check. A client certificate issued by the staged CA is
-        // still required to get this far.
-        LOG_ERROR("GetUserInfo: trusted common names are unknown and CONFIG_DB "
-                  "cannot be read; refusing '%s'", commonName.c_str());
+        // The policy cannot be read, so refuse rather than drop the check. A
+        // client certificate issued by the staged CA is still required to get
+        // this far.
+        LOG_ERROR("GetUserInfo: CONFIG_DB cannot be read; refusing '%s'",
+                  commonName.c_str());
         return false;
     }
 
-    const std::string& configured = cachedCnames_;
+    const std::string& configured = *read;
     if (trim(configured).empty())
     {
         // No trusted list configured: refuse, as the SONiC REST API server
@@ -219,9 +190,11 @@ bool UserMgr::isCommonNameTrusted(const std::string& commonName)
         }
     }
 
-    LOG_ERROR("GetUserInfo: common name '%s' matches none of the trusted "
-              "common names",
-              commonName.c_str());
+    // A refused client is normal operation, not a fault in this service, and
+    // any client holding a certificate from the CA can repeat it at will.
+    LOG_INFO("GetUserInfo: common name '%s' matches none of the trusted "
+             "common names",
+             commonName.c_str());
     return false;
 }
 
@@ -246,15 +219,19 @@ UserInfoMap UserMgr::getUserInfo(const std::string& userName)
     // privileges, rather than an error. bmcweb maps an unexpected D-Bus error
     // to 500, which would report a client whose certificate is not trusted as
     // a server fault; an empty role fails its privilege check and is answered
-    // with 403 instead.
+    // with 403 instead. Its groups are empty and it is not enabled, so the
+    // refusal does not rest on the role alone. The keys stay present: bmcweb
+    // rejects a reply without UserGroups with 500.
     const bool trusted = isCommonNameTrusted(userName);
 
     UserInfoMap userInfo;
 
     userInfo.emplace("UserPrivilege",
                      trusted ? std::string("priv-admin") : std::string(""));
-    userInfo.emplace("UserGroups", std::vector<std::string>{"redfish"});
-    userInfo.emplace("UserEnabled", true);
+    userInfo.emplace("UserGroups", trusted
+                                       ? std::vector<std::string>{"redfish"}
+                                       : std::vector<std::string>{});
+    userInfo.emplace("UserEnabled", trusted);
     userInfo.emplace("UserLockedForFailedAttempt", false);
     userInfo.emplace("UserPasswordExpired", false);
     userInfo.emplace("RemoteUser", false);

@@ -239,7 +239,12 @@ std::optional<std::string> RedisAdapter::getRedfishClientCnames()
     // whether client certificates are accepted, so it must not be lost.
     if (!configDbContext_)
     {
-        return std::nullopt;
+        // Not connected at startup, or dropped after an I/O error below.
+        configDbContext_ = connectToDb(configDbHost_, configDbPort_, 4);
+        if (!configDbContext_)
+        {
+            return std::nullopt;
+        }
     }
 
     redisReply* reply = static_cast<redisReply*>(
@@ -247,14 +252,31 @@ std::optional<std::string> RedisAdapter::getRedfishClientCnames()
                      "client_crt_cname"));
     if (!reply)
     {
+        // hiredis leaves the context unusable after an I/O error, so drop it
+        // and reconnect on the next read.
+        LOG_WARNING("CONFIG_DB read of client_crt_cname failed: %s",
+                    configDbContext_->errstr);
+        redisFree(configDbContext_);
+        configDbContext_ = nullptr;
         return std::nullopt;
     }
 
-    // Reachable: an unset field reads as an empty list.
-    std::optional<std::string> result = std::string();
+    std::optional<std::string> result;
     if (reply->type == REDIS_REPLY_STRING)
     {
         result = std::string(reply->str, reply->len);
+    }
+    else if (reply->type == REDIS_REPLY_NIL)
+    {
+        result = std::string(); // readable, field not set
+    }
+    else
+    {
+        // An error reply (e.g. LOADING while Redis starts) is a failed read,
+        // not an unset field.
+        LOG_WARNING("CONFIG_DB read of client_crt_cname failed: %s",
+                    reply->type == REDIS_REPLY_ERROR ? reply->str
+                                                     : "unexpected reply type");
     }
 
     freeReplyObject(reply);

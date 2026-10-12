@@ -82,12 +82,6 @@ class UserMgr
     /** @brief all groups that can be assigned to users */
     const std::vector<std::string> allGroups = {"redfish"};
 
-    /** @brief trusted common name list, read once and then held */
-    std::string cachedCnames_;
-
-    /** @brief whether cachedCnames_ holds a value read from CONFIG_DB */
-    bool haveCachedCnames_{false};
-
     /** @brief map container to hold users object (only admin) */
     std::unordered_map<std::string, std::unique_ptr<Users>> usersList;
 
@@ -98,28 +92,16 @@ class UserMgr
 
     /** @brief check the common name against the configured trusted list
      *
-     *  Uses the list read from REDFISH|certs client_crt_cname at startup and
-     *  held for the lifetime of the process, as the SONiC REST API server
-     *  does, so changing it takes effect when this service restarts. An unset
-     *  or empty list refuses every common name, as the REST API server does.
-     *  While the list has never been read, requests are also refused rather
-     *  than dropping the check.
+     *  Reads REDFISH|certs client_crt_cname on every call, so a change takes
+     *  effect on the next request. An unset or empty list refuses every
+     *  common name, as the SONiC REST API server does, and so does a failed
+     *  read rather than dropping the check.
      *
      *  @param[in] commonName - common name taken from the client certificate
      *
      *  @return true if the common name is accepted
      */
     bool isCommonNameTrusted(const std::string& commonName);
-
-    /** @brief read the trusted common names from CONFIG_DB and hold them
-     *
-     *  Called at construction and retried on demand while it has not
-     *  succeeded, mirroring how the REST API server waits for its
-     *  configuration before serving.
-     *
-     *  @return true once the list has been read
-     */
-    bool loadTrustedCnames();
 };
 
 } // namespace user
