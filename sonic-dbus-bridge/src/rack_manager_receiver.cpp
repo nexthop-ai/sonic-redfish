@@ -4,6 +4,7 @@
 // Copyright (C) 2026 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -109,6 +110,11 @@ static void extractSensors(const std::string& nodeKey, const Json::Value& node,
     {
         severity = node["Severity"].asString();
         haveSeverity = true;
+    }
+    else if (node.isMember("Severity"))
+    {
+        LOG_WARNING("RackManagerReceiver: Severity is not a string; using "
+                    "the inherited severity");
     }
 
     const std::string prefix =
@@ -224,8 +230,17 @@ bool RackManagerReceiver::initialize()
                 LOG_INFO("RackManagerReceiver: SubmitAlert received (%zu bytes)",
                          jsonStr.size());
                 Job j{};
-                if (!buildAlertJob(jsonStr, j))
+                try
                 {
+                    if (!buildAlertJob(jsonStr, j))
+                    {
+                        return false;
+                    }
+                }
+                catch (const std::exception& e)
+                {
+                    LOG_ERROR("RackManagerReceiver: SubmitAlert failed: %s",
+                              e.what());
                     return false;
                 }
                 std::lock_guard<std::mutex> lk(queueMutex_);
@@ -236,8 +251,11 @@ bool RackManagerReceiver::initialize()
                                 "dropping SubmitAlert", queue_.size());
                     return false;
                 }
+                size_t writes = j.writes.size();
                 queue_.emplace_back(std::move(j));
                 queueCv_.notify_one();
+                LOG_DEBUG("RackManagerReceiver: SubmitAlert queued (%zu fields, "
+                          "queue depth %zu)", writes, queue_.size());
                 return true;
             });
 
@@ -248,8 +266,17 @@ bool RackManagerReceiver::initialize()
                 LOG_INFO("RackManagerReceiver: SubmitTelemetry received (%zu bytes)",
                          jsonStr.size());
                 Job j{};
-                if (!buildTelemetryJob(jsonStr, j))
+                try
                 {
+                    if (!buildTelemetryJob(jsonStr, j))
+                    {
+                        return false;
+                    }
+                }
+                catch (const std::exception& e)
+                {
+                    LOG_ERROR("RackManagerReceiver: SubmitTelemetry failed: %s",
+                              e.what());
                     return false;
                 }
                 std::lock_guard<std::mutex> lk(queueMutex_);
@@ -260,8 +287,11 @@ bool RackManagerReceiver::initialize()
                                 "dropping SubmitTelemetry", queue_.size());
                     return false;
                 }
+                size_t writes = j.writes.size();
                 queue_.emplace_back(std::move(j));
                 queueCv_.notify_one();
+                LOG_DEBUG("RackManagerReceiver: SubmitTelemetry queued (%zu fields, "
+                          "queue depth %zu)", writes, queue_.size());
                 return true;
             });
 
@@ -310,6 +340,8 @@ bool RackManagerReceiver::connectRedis()
             redisCtx_ = redisConnectUnixWithTimeout(sockets[i], timeout);
             if (redisCtx_ && redisCtx_->err)
             {
+                LOG_DEBUG("RackManagerReceiver: %s: %s", sockets[i],
+                          redisCtx_->errstr);
                 redisFree(redisCtx_);
                 redisCtx_ = nullptr;
             }
@@ -465,7 +497,11 @@ void RackManagerReceiver::workerLoop()
             queueCv_.wait(lk, [this] {
                 return stopping_ || !queue_.empty();
             });
-            if (stopping_ && queue_.empty()) { return; }
+            if (stopping_ && queue_.empty())
+            {
+                LOG_DEBUG("RackManagerReceiver: worker stopping, queue empty");
+                return;
+            }
             job = std::move(queue_.front());
             queue_.pop_front();
         }
@@ -513,7 +549,16 @@ void RackManagerReceiver::drainOne(const Job& job)
             redisCtx_ = nullptr;
             return;
         }
-        if (reply && reply->type != REDIS_REPLY_ERROR) { ++stored; }
+        if (reply && reply->type != REDIS_REPLY_ERROR)
+        {
+            ++stored;
+        }
+        else if (reply)
+        {
+            // The error text only: field values are never logged.
+            LOG_WARNING("RackManagerReceiver: Redis refused a field write: %s",
+                        reply->str);
+        }
         if (reply) { freeReplyObject(reply); }
     }
 

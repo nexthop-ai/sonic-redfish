@@ -4,6 +4,7 @@
 // Copyright (C) 2026 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -72,6 +73,10 @@ inline void handleSonicSubmitTelemetry(
     }
     if (!hasEnvelope)
     {
+        // Key names come from the request, so only their number is logged.
+        BMCWEB_LOG_WARNING(
+            "SONiC.SubmitTelemetry: no 'Alarms' envelope key ({} top-level keys)",
+            reqJson->is_object() ? reqJson->size() : 0);
         messages::propertyMissing(asyncResp->res, "Alarms");
         return;
     }
@@ -101,6 +106,8 @@ inline void handleSonicSubmitTelemetry(
                 messages::operationFailed(asyncResp->res);
                 return;
             }
+            // Telemetry is periodic, so success is a debug line.
+            BMCWEB_LOG_DEBUG("SONiC.SubmitTelemetry: accepted by bridge");
             asyncResp->res.result(
                 boost::beast::http::status::no_content);
         },

@@ -4,6 +4,7 @@
 // Copyright (C) 2024 SONiC Project
 // Author: Nexthop AI
 // Author: SONiC Project
+// Author: Chinmoy Dey <chinmoy@nexthop.ai>
 // License file: sonic-redfish/LICENSE
 ///////////////////////////////////////
 
@@ -76,11 +77,15 @@ void ObjectMapperService::registerObject(
     objects_[path] = {interfaces,
                       serviceName.empty() ? INVENTORY_MANAGER_BUSNAME
                                           : serviceName};
+    LOG_DEBUG("ObjectMapper: registered %s (%zu interfaces)", path.c_str(),
+              interfaces.size());
 }
 
 void ObjectMapperService::unregisterObject(const std::string& path)
 {
-    objects_.erase(path);
+    size_t removed = objects_.erase(path);
+    LOG_DEBUG("ObjectMapper: unregistered %s (%s)", path.c_str(),
+              removed != 0 ? "removed" : "was not registered");
 }
 
 bool ObjectMapperService::pathIsUnder(const std::string& root,
@@ -126,6 +131,7 @@ ObjectMapperService::GetObjectResult ObjectMapperService::getObject(
     auto it = objects_.find(path);
     if (it == objects_.end())
     {
+        LOG_DEBUG("ObjectMapper: GetObject %s: not registered", path.c_str());
         return result;
     }
 
@@ -154,6 +160,8 @@ ObjectMapperService::GetObjectResult ObjectMapperService::getObject(
         result[objInfo.serviceName] = matchedIfaces;
     }
 
+    LOG_DEBUG("ObjectMapper: GetObject %s: %zu matching interfaces",
+              path.c_str(), matchedIfaces.size());
     return result;
 }
 
@@ -194,6 +202,8 @@ ObjectMapperService::GetSubTreeResult ObjectMapperService::getSubTree(
         }
     }
 
+    LOG_DEBUG("ObjectMapper: GetSubTree %s: %zu objects", subtree.c_str(),
+              result.size());
     return result;
 }
 
@@ -231,6 +241,8 @@ ObjectMapperService::GetSubTreePathsResult ObjectMapperService::getSubTreePaths(
         }
     }
 
+    LOG_DEBUG("ObjectMapper: GetSubTreePaths %s: %zu paths", subtree.c_str(),
+              result.size());
     return result;
 }
 
