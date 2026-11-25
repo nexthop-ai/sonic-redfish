@@ -351,12 +351,31 @@ void UpdateEngine::postLeakSensor(const LeakSensorInfo& sensor)
                 }
                 break;
             case leak_sync::LeakSensorAction::Update:
-                LOG_INFO("[UpdateEngine] Leak sensor %s state: %s -> %s",
-                         sensor.name.c_str(),
-                         cached ? cached->c_str() : "(none)", newState.c_str());
+            {
+                // Logged above the default level, so a leak is not
+                // lost when the level is raised: a critical leak at
+                // CRIT, any other state than a healthy OK at WARNING.
+                const char* oldState = cached ? cached->c_str() : "(none)";
+                if (newState.starts_with("Critical"))
+                {
+                    LOG_CRIT("[UpdateEngine] Leak sensor %s state: %s -> %s",
+                             sensor.name.c_str(), oldState, newState.c_str());
+                }
+                else if (newState != "OK")
+                {
+                    LOG_WARNING("[UpdateEngine] Leak sensor %s state: %s -> %s",
+                                sensor.name.c_str(), oldState,
+                                newState.c_str());
+                }
+                else
+                {
+                    LOG_NOTICE("[UpdateEngine] Leak sensor %s state: %s -> %s",
+                               sensor.name.c_str(), oldState, newState.c_str());
+                }
                 cachedLeakStates_[sensor.name] = newState;
                 dbusExporter_->updateLeakSensorState(sensor);
                 break;
+            }
             case leak_sync::LeakSensorAction::None:
                 LOG_DEBUG("[UpdateEngine] Leak sensor %s state unchanged (%s)",
                           sensor.name.c_str(), newState.c_str());
